@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ifc-context-repair"
+version = "0.4.2"
+description = "IFC Repair Studio: auditable repair of missing IfcShapeRepresentation contexts"
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+license = {text = "MIT"}
+authors = [{name = "IFC Context Repair contributors"}]
+dependencies = ["ifcopenshell>=0.8.0,<0.9", "reportlab>=4.4,<5"]
+
+[project.optional-dependencies]
+ui = ["PySide6>=6.7,<7"]
+test = ["pytest>=8", "pytest-cov>=5"]
+build = ["PyInstaller>=6.10"]
+diagnostics = ["psutil>=5.9,<8"]
+
+[project.scripts]
+ifc-context-repair = "ifc_context_repair.cli:main"
+ifc-context-repair-gui = "ifc_context_repair.app:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

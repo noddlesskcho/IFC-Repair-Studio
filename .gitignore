@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# IFC models and repair outputs
+*.ifc
+*.ifczip
+*.ifcxml
+samples/
+output/
+outputs/
+tmp/
+work/
+
+# Packaging artifacts
+build/
+dist/
+*.exe
+*.msi
+*.zip
+
+# Logs and local diagnostics
+*.log
+*.tmp
+*.bak
+*.backup
+
+# Local Codex metadata
+.agents/
+.codex/
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini

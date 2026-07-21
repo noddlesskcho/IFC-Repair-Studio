@@ -1,0 +1,20 @@
+{
+  "source": "C:/models/example.ifc",
+  "output": "C:/models/example_repaired.ifc",
+  "repair_mode": "IfcOpenShell semantic rewrite",
+  "diagnoses": [
+    {
+      "representation_step_id": 12345,
+      "entity": "IfcShapeRepresentation",
+      "representation_identifier": "Body",
+      "representation_type": "SweptSolid",
+      "product_class": "IfcSlab",
+      "product_global_id": "ANONYMISED_EXAMPLE_ONLY",
+      "old_context": null,
+      "new_context_step_id": 451,
+      "confidence": "safe",
+      "evidence": ["Equivalent valid same-file representations use this context"]
+    }
+  ],
+  "notice": "Illustrative only; no supplied sample produced this result."
+}
