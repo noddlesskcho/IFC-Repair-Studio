@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from .errors import DependencyError, InputError, ParseError
+from .errors import DependencyError, InputError, SemanticLoadError, StepSyntaxError
 
 
 def require_ifcopenshell() -> Any:
@@ -28,12 +28,12 @@ def check_step_envelope(path: Path, max_file_size_gb: float | None = None) -> No
     with path.open("rb") as stream:
         head = stream.read(4096).upper()
         if b"ISO-10303-21" not in head or b"HEADER;" not in head:
-            raise InputError("File does not contain a valid IFC STEP header")
+            raise StepSyntaxError("File does not contain a valid IFC STEP header")
         tail_size = min(size, 8192)
         stream.seek(max(0, size - tail_size))
         tail = stream.read().upper()
         if b"END-ISO-10303-21" not in tail:
-            raise InputError("IFC STEP termination marker is missing")
+            raise StepSyntaxError("IFC STEP termination marker is missing")
 
 
 def open_model(path: str | Path, max_file_size_gb: float | None = None) -> Any:
@@ -43,4 +43,6 @@ def open_model(path: str | Path, max_file_size_gb: float | None = None) -> Any:
     try:
         return ifcopenshell.open(str(source))
     except Exception as exc:
-        raise ParseError(f"IfcOpenShell could not parse {source.name}: {exc}") from exc
+        raise SemanticLoadError(
+            f"IfcOpenShell could not parse {source.name}: {exc}"
+        ) from exc

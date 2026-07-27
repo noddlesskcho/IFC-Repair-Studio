@@ -2,8 +2,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ifc_context_repair.models import ContextInfo, Diagnosis, RunReport, Status
-from ifc_context_repair.reporting import write_bundle
+from ifc_context_repair.models import (
+    AuditFinding, ConfidenceLevel, ContextInfo, Diagnosis, FileAssessment,
+    IfcSgAssessment, IfcSgClassification, ProcessingStrategy, RunReport, Status,
+)
+from ifc_context_repair.reporting import HTMLReportBuilder, write_bundle
 
 
 class ReportingTests(unittest.TestCase):
@@ -27,6 +30,7 @@ class ReportingTests(unittest.TestCase):
             evidence=["Direct IfcSlab ownership"],
             validation_result="Targeted output verified",
             repaired=True,
+            confidence_level=ConfidenceLevel.HIGH,
         )
         return RunReport(
             source="C:/project/sample.ifc", output="C:/project/sample_repaired.ifc",
@@ -43,10 +47,30 @@ class ReportingTests(unittest.TestCase):
                             "TargetedIssuesRemaining": 0},
             active_rule_id="SLAB_MISSING_SHAPE_CONTEXT_V1",
             active_rule_version="1.0", input_size=652895459, output_size=652901761,
+            classification_counts={
+                "DIRECT_PRODUCT": {
+                    "detected": 3151, "high_confidence": 3151,
+                    "auto_repair": 3151, "repaired": 3151, "remaining": 0,
+                }
+            },
             targeted_verification={"passed": True, "intended": 3151,
                                    "verified": 3151, "remaining": 0, "messages": []},
             diagnoses=[diagnosis], repair_mode="Targeted STEP attribute patch",
             environment={"python_version": "3.12", "ifcopenshell_version": "0.8"},
+            file_assessment=FileAssessment(
+                "sample.ifc", "sample.ifc", "IFC", "IFC4", 652895459,
+                "Large", ProcessingStrategy.HYBRID,
+                ifc_sg=IfcSgAssessment(
+                    IfcSgClassification.LIKELY,
+                    evidence=["SGPset_ property sets found"],
+                    likely_exporter="Autodesk Revit",
+                ),
+            ),
+            audit_findings=[AuditFinding(
+                "IFCSPACE_BODY_AUDIT_V1", "Space Geometry",
+                "Space Body requires review", 99, "IfcSpace",
+                detail="No Body representation", submission_risk="Review",
+            )],
         )
 
     def test_default_bundle_contains_only_pdf_and_html(self):
@@ -66,6 +90,76 @@ class ReportingTests(unittest.TestCase):
             self.assertIn("Export filtered CSV", html)
             self.assertIn("Export filtered JSON", html)
             self.assertIn("Search STEP ID", html)
+            self.assertIn('id="classification"', html)
+            self.assertIn("id='shape-aspects'", html)
+            self.assertIn("id='representation-maps'", html)
+            self.assertIn('id="verification"', html)
+            self.assertIn("outcome-grid", html)
+            self.assertIn("IFC+SG File Assessment", html)
+            self.assertIn("Space Body requires review", html)
+            self.assertNotIn(f" {chr(0x00F9)} ", html)
+            self.assertIn("Body / SweptSolid", html)
+            self.assertIn(
+                "A repaired IFC should still undergo the normal submission validation process",
+                html,
+            )
+            for tab in (
+                "Summary", "Repair Records",
+                "Report-Only Checks", "Verification", "Technical Details",
+            ):
+                self.assertIn(f">{tab}</a>", html)
+            self.assertNotIn('id="items-review"', html)
+            self.assertNotIn(">Unresolved Geometry</a>", html)
+            self.assertIn("REPAIRED IN IFC", html)
+            self.assertIn("REPORT ONLY", html)
+            self.assertIn("No IFC change was applied", html)
+            self.assertIn("<th>Outcome</th>", html)
+            self.assertIn("REVIEW IN REVIT", html)
+            self.assertNotIn("C:/project/", html)
+
+    def test_unresolved_geometry_section_only_appears_when_needed(self):
+        report = self.report()
+        report.summary_counts["TargetedIssuesRemaining"] = 2
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "unresolved.html"
+            HTMLReportBuilder().build(report, path)
+            html = path.read_text(encoding="utf-8")
+
+            self.assertIn(">Unresolved Geometry</a>", html)
+            self.assertIn('id="items-review"', html)
+            self.assertIn(
+                "2</strong> geometry reference(s) could not be repaired automatically",
+                html,
+            )
+
+    def test_html_groups_large_audit_lists_and_paginates_entity_ids(self):
+        report = self.report()
+        report.audit_findings = [
+            AuditFinding(
+                "BASE_QUANTITY_AUDIT_V1",
+                "Quantity Information",
+                "Quantity information requires review",
+                step_id,
+                "IfcElementQuantity",
+                detail="MethodOfMeasurement is empty",
+                submission_risk=(
+                    "Confirm the applicable CORENET X submission expectation"
+                ),
+            )
+            for step_id in range(1, 5001)
+        ]
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "large_audit.html"
+            HTMLReportBuilder().build(report, path)
+            html = path.read_text(encoding="utf-8")
+
+            self.assertIn("condensed into <strong>1</strong> issue group", html)
+            self.assertIn("Groups per page", html)
+            self.assertIn("Entity page", html)
+            self.assertIn('"count":5000', html)
+            self.assertIn('"entity_ids":[1,2,3', html)
+            self.assertEqual(html.count("BASE_QUANTITY_AUDIT_V1"), 1)
+            self.assertLess(path.stat().st_size, 1_000_000)
 
 
 if __name__ == "__main__":

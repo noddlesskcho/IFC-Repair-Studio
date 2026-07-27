@@ -1,3 +1,3 @@
-"""Safe repair of missing IFC representation contexts."""
+"""IFC+SG pre-submission audit and targeted repair for CORENET X workflows."""
 
-__version__ = "0.4.2"
+__version__ = "1.0.0"

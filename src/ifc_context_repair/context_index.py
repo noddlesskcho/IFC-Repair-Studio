@@ -43,6 +43,12 @@ class SemanticIndex:
     matching_contexts: dict[tuple[str, str, str, str], Counter[int]] = field(
         default_factory=lambda: defaultdict(Counter)
     )
+    semantic_contexts: dict[tuple[str, str, str], Counter[int]] = field(
+        default_factory=lambda: defaultdict(Counter)
+    )
+    product_scope: dict[int, str] = field(default_factory=dict)
+    products_by_scope: Counter[str] = field(default_factory=Counter)
+    representations_by_scope: Counter[str] = field(default_factory=Counter)
     total_shape_representations: int = 0
     total_products: int = 0
 
@@ -90,8 +96,8 @@ class SemanticIndex:
             )
 
         # A targeted product list avoids building inverse ownership for every
-        # object in a large multidisciplinary IFC. The slab-only application
-        # supplies IfcSlab instances here and follows the direct standard chain:
+        # object in a large multidisciplinary IFC. Product policies supply their
+        # supported instances here and follow the direct standard chain:
         # product.Representation -> ProductDefinitionShape.Representations.
         if products is not None:
             for product in products:
@@ -137,6 +143,7 @@ class SemanticIndex:
             product = index.product_for(rep)
             key = index.signature(rep, product)
             index.matching_contexts[key][cid] += 1
+            index.semantic_contexts[key[1:]][cid] += 1
             index.usage[(*key, cid)] += 1
         return index
 

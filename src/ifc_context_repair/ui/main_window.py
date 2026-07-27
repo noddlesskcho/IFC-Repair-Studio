@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import re
 import traceback
-from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -14,57 +13,69 @@ from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices
 from PySide6.QtWidgets import (
     QButtonGroup, QCheckBox, QFileDialog, QFrame, QGridLayout, QHBoxLayout,
     QLabel, QLineEdit, QMainWindow, QMessageBox, QProgressBar, QPushButton,
-    QMenu, QRadioButton, QScrollArea, QSizePolicy, QVBoxLayout, QWidget,
+    QMenu, QRadioButton, QScrollArea, QTreeWidget,
+    QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
 from ..config import RepairConfig
 from ..errors import CancelledError
-from ..models import RunReport, Status
+from ..file_io import SUPPORTED_INPUT_SUFFIXES, prepare_input
+from ..models import RepresentationClassification, RunReport, Status
 from ..naming import default_repaired_path, overwrite_backup_path
 from ..output_safety import cleanup_abandoned_temps
 from ..repair import analyse, repair_file
-from ..rules import ACTIVE_RULE
 from ..telemetry import StageUpdate
+from ..utils import format_bytes
 from ..workers import CancellationToken
 
 
 LIGHT_STYLE = """
-QMainWindow, QWidget#root, QScrollArea#scroll { background:#f5f7fa; color:#172033; }
-QFrame#card { background:#ffffff; border:1px solid #dce3ec; border-radius:9px; }
-QFrame#successCard { background:#f0faf3; border:1px solid #a9dfb5; border-radius:9px; }
-QFrame#errorCard { background:#fff5f5; border:1px solid #efb2b2; border-radius:9px; }
-QLabel#muted { color:#657286; }
-QLabel#title { font-size:24px; font-weight:700; color:#111827; }
-QLabel#section { font-size:13px; font-weight:700; color:#253247; }
-QLabel#status { padding:5px 11px; border-radius:12px; background:#eaf2ff; color:#155eef; font-weight:600; }
-QLabel#stageActive { color:#155eef; font-weight:700; }
-QLabel#stageDone { color:#22863a; font-weight:700; }
-QLabel#stagePending { color:#7b8798; }
-QLabel#metricValue { font-size:20px; font-weight:700; color:#111827; }
-QLabel#metricLabel { color:#5d697b; font-size:11px; }
-QPushButton { min-height:20px; border:1px solid #cfd8e5; border-radius:6px; background:#fff; color:#263246; padding:8px 14px; }
-QPushButton:hover { background:#f2f5f9; border-color:#9eacc0; }
-QPushButton:focus { border:2px solid #4c8dff; padding:7px 13px; }
-QPushButton:disabled { color:#9da7b5; background:#edf0f4; border-color:#e1e5eb; }
-QPushButton#primary { color:#fff; background:#155eef; border-color:#155eef; font-weight:700; }
-QPushButton#primary:hover { background:#0b4fd4; }
-QPushButton#quiet { background:transparent; border-color:transparent; color:#526176; }
-QLineEdit { border:1px solid #cfd8e5; border-radius:6px; background:#fff; padding:8px; selection-background-color:#155eef; }
-QLineEdit:focus { border:2px solid #4c8dff; padding:7px; }
-QProgressBar { border:0; border-radius:4px; background:#e5eaf1; min-height:8px; max-height:8px; }
-QProgressBar::chunk { border-radius:4px; background:#238636; }
-QRadioButton, QCheckBox { spacing:8px; }
+* { font-family:"Segoe UI"; }
+QMainWindow, QWidget#root, QScrollArea#scroll { background:#f4f5f7; color:#182230; }
+QFrame#card { background:#ffffff; border:1px solid #e4e7ec; border-radius:14px; }
+QFrame#metricCard { background:#ffffff; border:1px solid #e4e7ec; border-radius:12px; }
+QFrame#successCard { background:#f4fbf6; border:1px solid #b7dfc1; border-radius:14px; }
+QFrame#errorCard { background:#fff6f5; border:1px solid #f2b8b5; border-radius:14px; }
+QLabel#muted { color:#667085; }
+QLabel#eyebrow { color:#175cd3; font-size:11px; font-weight:700; }
+QLabel#title { font-size:28px; font-weight:700; color:#101828; }
+QLabel#subtitle { color:#475467; font-size:13px; }
+QLabel#section { font-size:14px; font-weight:700; color:#101828; }
+QLabel#status { padding:7px 13px; border-radius:14px; background:#eaf2ff; color:#175cd3; font-weight:600; }
+QLabel#stageActive { color:#175cd3; font-weight:700; padding:6px; }
+QLabel#stageDone { color:#067647; font-weight:700; padding:6px; }
+QLabel#stagePending { color:#98a2b3; padding:6px; }
+QLabel#metricValue { font-size:25px; font-weight:700; color:#101828; }
+QLabel#metricLabel { color:#667085; font-size:11px; }
+QLabel#assessmentValue { color:#101828; font-size:15px; font-weight:700; }
+QPushButton { min-height:22px; border:1px solid #d0d5dd; border-radius:8px; background:#fff; color:#344054; padding:9px 16px; }
+QPushButton:hover { background:#f9fafb; border-color:#98a2b3; }
+QPushButton:focus { border:2px solid #84adff; padding:8px 15px; }
+QPushButton:disabled { color:#98a2b3; background:#f2f4f7; border-color:#eaecf0; }
+QPushButton#primary { color:#fff; background:#175cd3; border-color:#175cd3; font-weight:700; }
+QPushButton#primary:hover { background:#1849a9; }
+QPushButton#quiet { background:transparent; border-color:transparent; color:#475467; }
+QRadioButton { spacing:9px; padding:7px 10px; font-weight:600; }
+QLineEdit { border:1px solid #d0d5dd; border-radius:8px; background:#fff; padding:9px; }
+QProgressBar { border:0; border-radius:8px; background:#eaecf0; min-height:16px; max-height:16px; text-align:center; color:#182230; font-weight:600; }
+QProgressBar::chunk { border-radius:8px; background:#175cd3; }
+QFrame#progressCard { background:#f5f9ff; border:2px solid #84adff; border-radius:14px; }
+QScrollBar:vertical { background:#eef1f5; width:14px; margin:2px; border-radius:7px; }
+QScrollBar::handle:vertical { background:#98a2b3; min-height:48px; border-radius:5px; margin:1px; }
+QScrollBar::handle:vertical:hover { background:#667085; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height:0; }
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background:transparent; }
 """
 
 class WorkflowState(Enum):
-    NO_FILE = "No file"
-    READY_TO_SCAN = "Ready to scan"
-    SCANNING = "Scanning"
-    ISSUES_FOUND = "Issues found"
-    NO_ISSUES = "No issues"
+    NO_FILE = "Select IFC"
+    READY_TO_SCAN = "Ready"
+    SCANNING = "Checking"
+    ISSUES_FOUND = "Results Ready"
+    NO_ISSUES = "Review Complete"
     REPAIRING = "Repairing"
     COMPLETED = "Completed"
-    FAILED = "Attention required"
+    FAILED = "Repair Failed"
 
 
 @dataclass(slots=True)
@@ -115,12 +126,13 @@ class TaskWorker(QObject):
             self.failed.emit(context)
 
 
-class Metric(QWidget):
+class Metric(QFrame):
     def __init__(self, label: str) -> None:
         super().__init__()
+        self.setObjectName("metricCard")
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 3, 6, 3)
-        layout.setSpacing(1)
+        layout.setContentsMargins(15, 13, 15, 13)
+        layout.setSpacing(3)
         self.value = QLabel("0")
         self.value.setObjectName("metricValue")
         caption = QLabel(label)
@@ -133,14 +145,12 @@ class Metric(QWidget):
         self.value.setText(f"{value:,}" if isinstance(value, int) else str(value))
 
 
-def _format_bytes(value: int) -> str:
-    units = ["B", "KB", "MB", "GB", "TB"]
-    amount = float(value)
-    for unit in units:
-        if amount < 1024 or unit == units[-1]:
-            return f"{amount:.0f} {unit}" if unit == "B" else f"{amount:.1f} {unit}"
-        amount /= 1024
-    return f"{value:,} B"
+def _format_duration(value: float) -> str:
+    seconds = max(0, int(round(value)))
+    minutes, seconds = divmod(seconds, 60)
+    if minutes:
+        return f"{minutes} min {seconds} sec"
+    return f"{seconds} sec"
 
 
 def _read_schema(path: Path) -> str | None:
@@ -156,11 +166,11 @@ def _read_schema(path: Path) -> str | None:
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("IFC Repair Studio")
-        self.resize(1080, 850)
-        self.setMinimumSize(880, 680)
+        self.setWindowTitle("IFC+SG Repair Assistant")
+        self.resize(1120, 930)
+        self.setMinimumSize(920, 700)
         self.setAcceptDrops(True)
-        self.settings = QSettings("BCA", "IFCRepairStudio")
+        self.settings = QSettings("BCA", "IFCSGRepairAssistant")
         recent_directory = self.settings.value("last_output_directory", "")
         if recent_directory:
             cleanup_abandoned_temps(Path(str(recent_directory)), older_than_hours=24.0)
@@ -200,66 +210,88 @@ class MainWindow(QMainWindow):
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         content = QWidget()
         layout = QVBoxLayout(content)
-        layout.setContentsMargins(28, 22, 28, 24)
-        layout.setSpacing(12)
+        layout.setContentsMargins(34, 28, 34, 34)
+        layout.setSpacing(15)
+        self.content_layout = layout
 
         header = QHBoxLayout()
         titles = QVBoxLayout()
-        title = QLabel("IFC Repair Studio")
+        eyebrow = QLabel("IFC+SG  •  AUTODESK REVIT 2025 / 2026  •  CORENET X")
+        eyebrow.setObjectName("eyebrow")
+        title = QLabel("IFC+SG Repair Assistant")
         title.setObjectName("title")
-        subtitle = QLabel("Detect, repair and verify targeted IFC representation issues.")
-        subtitle.setObjectName("muted")
+        subtitle = QLabel(
+            "Repair known IFC+SG geometry-reference issues from Autodesk Revit 2025 "
+            "and Revit 2026 before CORENET X submission."
+        )
+        subtitle.setObjectName("subtitle")
+        subtitle.setWordWrap(True)
+        titles.addWidget(eyebrow)
         titles.addWidget(title)
         titles.addWidget(subtitle)
         self.status_badge = QLabel("Ready")
         self.status_badge.setObjectName("status")
         header.addLayout(titles, 1)
-        header.addWidget(self.status_badge)
+        header.addWidget(
+            self.status_badge, 0,
+            Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight,
+        )
         layout.addLayout(header)
-
-        rule_row = QHBoxLayout()
-        rule_label = QLabel("Active repair rule")
-        rule_label.setObjectName("muted")
-        rule_name = QLabel(ACTIVE_RULE.display_name)
-        rule_name.setObjectName("section")
-        rule_name.setToolTip(ACTIVE_RULE.description)
-        rule_row.addWidget(rule_label)
-        rule_row.addWidget(rule_name)
-        rule_row.addStretch(1)
-        layout.addLayout(rule_row)
 
         stages = self._card()
         stage_layout = QHBoxLayout(stages)
-        stage_layout.setContentsMargins(16, 10, 16, 10)
+        stage_layout.setContentsMargins(18, 11, 18, 11)
         self.stage_labels = []
-        for index, text in enumerate(("1  Select File", "2  Scan", "3  Repair and Verify")):
+        for index, text in enumerate(("1  Select IFC", "2  Review Results", "3  Repair IFC")):
             label = QLabel(text)
             label.setObjectName("stagePending")
             self.stage_labels.append(label)
             stage_layout.addWidget(label)
             if index < 2:
-                divider = QLabel("----------------")
+                divider = QLabel("━━━━━━━━━━━━")
                 divider.setObjectName("muted")
                 stage_layout.addWidget(divider, 1)
         layout.addWidget(stages)
 
-        layout.addWidget(self._build_file_card())
-        self.results_card = self._build_results_card()
-        layout.addWidget(self.results_card)
-        self.action_message = QLabel("")
-        self.action_message.setWordWrap(True)
-        self.action_message.setStyleSheet("font-size:14px;font-weight:600;")
-        layout.addWidget(self.action_message)
-        self.output_card = self._build_output_card()
-        layout.addWidget(self.output_card)
-        layout.addWidget(self._build_action_row())
         self.progress_card = self._build_progress_card()
         layout.addWidget(self.progress_card)
+        self.file_card = self._build_file_card()
+        layout.addWidget(self.file_card)
+        self.assessment_card = self._build_assessment_card()
+        layout.addWidget(self.assessment_card)
+        layout.addWidget(self._build_repair_mode_card())
+        self.results_card = self._build_results_card()
+        layout.addWidget(self.results_card)
+        self.repair_summary_card = self._build_repair_summary_card()
+        layout.addWidget(self.repair_summary_card)
+        # Legacy engineering widgets remain instantiated for compatibility with
+        # existing report data, but are deliberately not exposed in the modeller UI.
+        self.classification_card = self._build_classification_card()
+        self.classification_card.setVisible(False)
+        self.action_message = QLabel("")
+        self.action_message.setWordWrap(True)
+        self.action_message.setStyleSheet(
+            "font-size:13px;font-weight:600;color:#344054;padding:2px 2px;"
+        )
+        layout.addWidget(self.action_message)
+        self.output_card = self._build_output_card()
+        self.output_card.setVisible(False)
+        self.action_row = self._build_action_row()
+        layout.addWidget(self.action_row)
         self.completion_card = self._build_completion_card()
         layout.addWidget(self.completion_card)
-        layout.addWidget(self._build_details_card())
+        disclaimer = QLabel(
+            "This application performs targeted repairs for known IFC+SG export issues. "
+            "It is not a complete IFC validator or CORENET X compliance checker. "
+            "A repaired IFC should still undergo the normal submission validation process."
+        )
+        disclaimer.setObjectName("muted")
+        disclaimer.setWordWrap(True)
+        disclaimer.setStyleSheet("font-size:11px;padding:4px 3px;")
+        layout.addWidget(disclaimer)
         layout.addStretch(1)
         scroll.setWidget(content)
+        self.scroll_area = scroll
         outer.addWidget(scroll)
         self.setCentralWidget(root)
 
@@ -267,11 +299,11 @@ class MainWindow(QMainWindow):
         card = self._card()
         layout = QGridLayout(card)
         layout.setContentsMargins(16, 13, 16, 13)
-        heading = QLabel("File")
+        heading = QLabel("Selected IFC")
         heading.setObjectName("section")
         self.file_name = QLabel("No IFC file selected")
         self.file_name.setStyleSheet("font-weight:700;")
-        self.file_meta = QLabel("Select an IFC file to begin")
+        self.file_meta = QLabel("Choose an IFC, IFCZIP, or ZIP file to begin")
         self.file_meta.setObjectName("muted")
         self.file_meta.setWordWrap(True)
         self.file_path = QLabel("")
@@ -286,35 +318,142 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.select_button, 0, 2, Qt.AlignmentFlag.AlignRight)
         layout.addWidget(self.file_name, 1, 0, 1, 2)
         layout.addWidget(self.file_meta, 2, 0, 1, 3)
-        layout.addWidget(self.file_path, 3, 0, 1, 3)
+        self.file_path.setVisible(False)
         layout.setColumnStretch(1, 1)
+        return card
+
+    def _build_repair_mode_card(self) -> QFrame:
+        card = self._card()
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(18, 14, 18, 14)
+        layout.setSpacing(7)
+        heading = QLabel("Repair Mode")
+        heading.setObjectName("section")
+        modes = QHBoxLayout()
+        self.repair_mode_group = QButtonGroup(self)
+        self.repair_mode_audit = QRadioButton("Audit Only")
+        self.repair_mode_repair = QRadioButton("Repair IFC")
+        self.repair_mode_group.addButton(self.repair_mode_audit)
+        self.repair_mode_group.addButton(self.repair_mode_repair)
+        self.repair_mode_repair.setChecked(True)
+        self.repair_mode_audit.toggled.connect(self._repair_mode_changed)
+        self.repair_mode_repair.toggled.connect(self._repair_mode_changed)
+        modes.addWidget(self.repair_mode_audit)
+        modes.addWidget(self.repair_mode_repair)
+        modes.addStretch(1)
+        self.repair_mode_note = QLabel(
+            "Check the IFC, repair all supported issues that can be resolved safely, "
+            "and verify the repaired IFC."
+        )
+        self.repair_mode_note.setObjectName("muted")
+        self.repair_mode_note.setWordWrap(True)
+        layout.addWidget(heading)
+        layout.addLayout(modes)
+        layout.addWidget(self.repair_mode_note)
+        return card
+
+    def _build_assessment_card(self) -> QFrame:
+        card = self._card()
+        layout = QGridLayout(card)
+        layout.setContentsMargins(16, 12, 16, 12)
+        heading = QLabel("File Assessment")
+        heading.setObjectName("section")
+        self.assessment_schema = QLabel("Schema: —")
+        self.assessment_exporter = QLabel("Likely authoring tool: —")
+        self.assessment_ifcsg = QLabel("IFC+SG identification: —")
+        self.assessment_strategy = QLabel("Processing strategy: —")
+        self.assessment_size = QLabel("—")
+        self.assessment_size.setObjectName("assessmentValue")
+        self.assessment_status = QLabel("")
+        self.assessment_status.setWordWrap(True)
+        self.assessment_status.setStyleSheet(
+            "background:#eff8ff;color:#175cd3;border-radius:8px;padding:10px;"
+        )
+        self.assessment_evidence = QLabel("")
+        self.assessment_evidence.setObjectName("muted")
+        self.assessment_evidence.setWordWrap(True)
+        layout.addWidget(heading, 0, 0, 1, 2)
+        layout.addWidget(self.assessment_schema, 1, 0)
+        layout.addWidget(self.assessment_exporter, 1, 1)
+        layout.addWidget(self.assessment_ifcsg, 2, 0)
+        layout.addWidget(self.assessment_strategy, 2, 1)
+        layout.addWidget(self.assessment_evidence, 3, 0, 1, 2)
+        layout.addWidget(self.assessment_size, 2, 1)
+        layout.addWidget(self.assessment_status, 3, 0, 1, 2)
+        self.assessment_strategy.setVisible(False)
+        self.assessment_evidence.setVisible(False)
         return card
 
     def _build_results_card(self) -> QFrame:
         card = self._card()
         layout = QVBoxLayout(card)
         layout.setContentsMargins(16, 12, 16, 12)
-        heading = QLabel("Scan Results")
+        heading = QLabel("Results Summary")
         heading.setObjectName("section")
         layout.addWidget(heading)
         grid = QGridLayout()
         labels = [
-            "Elements Scanned", "Elements Affected", "Representations Scanned",
-            "Targeted Issues", "Automatically Repairable",
-            "Not Automatically Repairable", "Successfully Repaired",
-            "Issues Remaining",
+            "Geometry References to Repair",
+            "Ready to Repair",
+            "Items to Check in Revit",
+            "IFC Verification",
         ]
         self.metrics: dict[str, Metric] = {}
         for index, label in enumerate(labels):
             metric = Metric(label)
             self.metrics[label] = metric
-            grid.addWidget(metric, index // 4, index % 4)
+            grid.addWidget(metric, 0, index)
         for column in range(4):
             grid.setColumnStretch(column, 1)
         layout.addLayout(grid)
         self.breakdown = QLabel("")
         self.breakdown.setObjectName("muted")
+        self.breakdown.setWordWrap(True)
+        self.breakdown.setVisible(False)
         layout.addWidget(self.breakdown)
+        return card
+
+    def _build_repair_summary_card(self) -> QFrame:
+        card = self._card()
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(18, 15, 18, 16)
+        heading = QLabel("Repair Summary")
+        heading.setObjectName("section")
+        self.repair_summary = QLabel(
+            "The results will explain whether the supported Revit export issue was found."
+        )
+        self.repair_summary.setWordWrap(True)
+        self.repair_summary.setStyleSheet("color:#344054;line-height:1.5;")
+        layout.addWidget(heading)
+        layout.addWidget(self.repair_summary)
+        return card
+
+    def _build_classification_card(self) -> QFrame:
+        card = self._card()
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(16, 12, 16, 12)
+        heading = QLabel("Missing Representation Context Classification")
+        heading.setObjectName("section")
+        note = QLabel(
+            "Expand a category to inspect records. Complete details remain available "
+            "in the HTML engineering report."
+        )
+        note.setObjectName("muted")
+        note.setWordWrap(True)
+        self.classification_tree = QTreeWidget()
+        self.classification_tree.setColumnCount(7)
+        self.classification_tree.setHeaderLabels([
+            "Category / STEP ID", "Signature", "Ultimate Product",
+            "Usages", "Candidate", "Confidence", "Proposed Action",
+        ])
+        self.classification_tree.setAlternatingRowColors(True)
+        self.classification_tree.setUniformRowHeights(True)
+        self.classification_tree.itemExpanded.connect(
+            self._populate_classification_category
+        )
+        layout.addWidget(heading)
+        layout.addWidget(note)
+        layout.addWidget(self.classification_tree)
         return card
 
     def _build_output_card(self) -> QFrame:
@@ -325,11 +464,12 @@ class MainWindow(QMainWindow):
         heading.setObjectName("section")
         layout.addWidget(heading)
         self.save_as_radio = QRadioButton("Save as a new repaired file (recommended)")
-        self.replace_radio = QRadioButton("Replace original file (advanced)")
+        self.replace_radio = QRadioButton("Replace original file")
         modes = QButtonGroup(self)
         modes.addButton(self.save_as_radio)
         modes.addButton(self.replace_radio)
         self.save_as_radio.setChecked(True)
+        self.replace_radio.setVisible(False)
         self.save_as_radio.toggled.connect(self._output_mode_changed)
         layout.addWidget(self.save_as_radio)
         layout.addWidget(self.replace_radio)
@@ -344,13 +484,11 @@ class MainWindow(QMainWindow):
         self.output_note = QLabel("Original file will remain unchanged")
         self.output_note.setObjectName("muted")
         layout.addWidget(self.output_note)
-        self.full_validation = QCheckBox("Run full IFC schema validation")
+        self.full_validation = QCheckBox("Run optional full IFC schema validation")
         self.full_validation.setToolTip(
             "Optional. Full validation can take significantly longer for large models."
         )
-        self.full_validation.setChecked(
-            self.settings.value("full_validation", False, type=bool)
-        )
+        self.full_validation.setChecked(False)
         layout.addWidget(self.full_validation)
         return card
 
@@ -358,9 +496,9 @@ class MainWindow(QMainWindow):
         widget = QWidget()
         layout = QHBoxLayout(widget)
         layout.setContentsMargins(0, 0, 0, 0)
-        self.scan_button = QPushButton("Scan IFC")
+        self.scan_button = QPushButton("Review IFC")
         self.scan_button.clicked.connect(self.scan)
-        self.repair_button = QPushButton("Repair")
+        self.repair_button = QPushButton("Repair IFC")
         self.repair_button.clicked.connect(self.repair)
         layout.addStretch(1)
         layout.addWidget(self.scan_button)
@@ -368,7 +506,8 @@ class MainWindow(QMainWindow):
         return widget
 
     def _build_progress_card(self) -> QFrame:
-        card = self._card()
+        card = self._card("progressCard")
+        card.setAccessibleName("Current IFC operation progress")
         layout = QVBoxLayout(card)
         layout.setContentsMargins(16, 12, 16, 12)
         top = QHBoxLayout()
@@ -385,7 +524,8 @@ class MainWindow(QMainWindow):
         self.progress_detail.setWordWrap(True)
         layout.addWidget(self.progress_detail)
         self.progress = QProgressBar()
-        self.progress.setTextVisible(False)
+        self.progress.setTextVisible(True)
+        self.progress.setFormat("%p%")
         layout.addWidget(self.progress)
         bottom = QHBoxLayout()
         bottom.addStretch(1)
@@ -398,19 +538,23 @@ class MainWindow(QMainWindow):
     def _build_completion_card(self) -> QFrame:
         card = self._card("successCard")
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(16, 13, 16, 13)
-        self.completion_title = QLabel("Repair completed successfully")
-        self.completion_title.setStyleSheet("font-size:17px;font-weight:700;")
+        layout.setContentsMargins(20, 18, 20, 18)
+        layout.setSpacing(10)
+        self.completion_title = QLabel("Repair Completed")
+        self.completion_title.setStyleSheet("font-size:20px;font-weight:700;color:#05603a;")
         self.completion_summary = QLabel("")
         self.completion_summary.setWordWrap(True)
+        self.completion_summary.setStyleSheet("font-size:13px;color:#344054;")
         layout.addWidget(self.completion_title)
         layout.addWidget(self.completion_summary)
         buttons = QHBoxLayout()
-        self.report_button = QPushButton("Open Report")
+        self.open_ifc_button = QPushButton("Open Repaired IFC")
+        self.open_ifc_button.clicked.connect(self.open_repaired_ifc)
+        self.report_button = QPushButton("Open Detailed Report")
         self.report_button.setObjectName("primary")
         self.report_menu = QMenu(self.report_button)
-        self.html_report_action = QAction("HTML Engineering Report", self)
-        self.pdf_report_action = QAction("PDF Executive Report", self)
+        self.html_report_action = QAction("Open Detailed Report", self)
+        self.pdf_report_action = QAction("Open PDF Summary", self)
         self.repaired_ifc_action = QAction("Open Repaired IFC", self)
         self.html_report_action.triggered.connect(
             lambda: self.open_report("html")
@@ -419,17 +563,27 @@ class MainWindow(QMainWindow):
             lambda: self.open_report("pdf")
         )
         self.repaired_ifc_action.triggered.connect(self.open_repaired_ifc)
-        self.report_menu.addAction(self.html_report_action)
-        self.report_menu.addAction(self.pdf_report_action)
-        self.report_menu.addSeparator()
-        self.report_menu.addAction(self.repaired_ifc_action)
-        self.report_button.setMenu(self.report_menu)
-        self.another_button = QPushButton("Repair Another File")
+        self.report_button.clicked.connect(lambda: self.open_report("html"))
+        self.another_button = QPushButton("Check Another IFC")
         self.another_button.clicked.connect(self.reset)
+        buttons.addWidget(self.open_ifc_button)
         buttons.addWidget(self.report_button)
         buttons.addWidget(self.another_button)
         buttons.addStretch(1)
         layout.addLayout(buttons)
+        self.details_button = QPushButton("Technical Details")
+        self.details_button.setObjectName("quiet")
+        self.details_button.setCheckable(True)
+        self.details_button.toggled.connect(self._toggle_details)
+        self.details_text = QLabel("")
+        self.details_text.setObjectName("muted")
+        self.details_text.setWordWrap(True)
+        self.details_text.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        self.details_text.setVisible(False)
+        layout.addWidget(self.details_button, 0, Qt.AlignmentFlag.AlignLeft)
+        layout.addWidget(self.details_text)
         return card
 
     def _build_details_card(self) -> QFrame:
@@ -460,77 +614,137 @@ class MainWindow(QMainWindow):
     def _apply_state(self, state: WorkflowState) -> None:
         self.state = state
         self.status_badge.setText(state.value)
+        if state in {WorkflowState.COMPLETED, WorkflowState.NO_ISSUES}:
+            badge_background, badge_colour = "#ecfdf3", "#067647"
+        elif state == WorkflowState.FAILED:
+            badge_background, badge_colour = "#fef3f2", "#b42318"
+        else:
+            badge_background, badge_colour = "#eaf2ff", "#175cd3"
+        self.status_badge.setStyleSheet(
+            f"padding:7px 13px;border-radius:14px;background:{badge_background};"
+            f"color:{badge_colour};font-weight:600;"
+        )
         busy = state in {WorkflowState.SCANNING, WorkflowState.REPAIRING}
         self.select_button.setEnabled(not busy)
+        self.assessment_card.setVisible(
+            self.report is not None or state in {
+                WorkflowState.SCANNING, WorkflowState.REPAIRING
+            }
+        )
         self.results_card.setVisible(state not in {WorkflowState.NO_FILE, WorkflowState.READY_TO_SCAN})
-        self.output_card.setVisible(state == WorkflowState.ISSUES_FOUND)
+        self.repair_summary_card.setVisible(
+            state not in {
+                WorkflowState.NO_FILE, WorkflowState.READY_TO_SCAN,
+                WorkflowState.COMPLETED, WorkflowState.FAILED,
+            }
+        )
+        self.classification_card.setVisible(False)
+        self.output_card.setVisible(False)
         self.progress_card.setVisible(busy)
         self.completion_card.setVisible(state in {WorkflowState.COMPLETED, WorkflowState.FAILED})
         self.scan_button.setVisible(state not in {WorkflowState.NO_FILE, WorkflowState.COMPLETED})
         self.repair_button.setVisible(state in {WorkflowState.ISSUES_FOUND, WorkflowState.REPAIRING})
+        self.action_row.setVisible(
+            state not in {WorkflowState.NO_FILE, WorkflowState.COMPLETED, WorkflowState.FAILED}
+        )
         self.cancel_button.setVisible(busy)
 
         if state == WorkflowState.NO_FILE:
             self._set_primary(self.select_button)
-            self.select_button.setText("Select IFC File")
+            self.select_button.setText("Select IFC")
             self.scan_button.setEnabled(False)
             self.repair_button.setEnabled(False)
-            self.action_message.setText("Select an IFC file to begin.")
+            self.action_message.setText(
+                "Select an IFC+SG file exported from Autodesk Revit 2025 or Revit 2026."
+            )
             stage = 0
         elif state == WorkflowState.READY_TO_SCAN:
             self._set_primary(self.scan_button)
-            self.select_button.setText("Change File")
-            self.scan_button.setText("Scan IFC")
+            self.select_button.setText("Change IFC")
+            self.scan_button.setText("Review IFC")
             self.scan_button.setEnabled(True)
             self.repair_button.setEnabled(False)
-            self.action_message.setText("The file is ready for the active repair rule scan.")
+            self.action_message.setText(
+                "Select Review IFC to check for the supported Revit IFC export issue."
+            )
             stage = 1
         elif state == WorkflowState.SCANNING:
             self._set_primary(None)
-            self.scan_button.setText("Scanning...")
+            self.scan_button.setText("Checking...")
             self.scan_button.setEnabled(False)
             self.repair_button.setEnabled(False)
-            self.action_message.setText("Scanning the selected repair-rule scope.")
+            self.action_message.setText(
+                "Reviewing the IFC. You can continue working while this runs."
+            )
             stage = 1
         elif state == WorkflowState.ISSUES_FOUND:
+            self.select_button.setText("Change IFC")
             repairable = self.report.summary_counts.get("AutomaticallyRepairable", 0) if self.report else 0
-            affected = self.report.summary_counts.get("ElementsAffected", 0) if self.report else 0
             self._set_primary(self.repair_button)
-            self.scan_button.setText("Scan Again")
+            self.scan_button.setText("Check Again")
             self.scan_button.setEnabled(True)
-            self.repair_button.setText(f"Repair {repairable:,} Representations")
-            self.repair_button.setEnabled(repairable > 0)
+            mode = self._repair_mode_key()
+            label = "Audit Complete" if mode == "audit" else f"Repair IFC ({repairable:,})"
+            self.repair_button.setText(label)
+            repair_supported = self._automatic_repair_supported()
+            self.repair_button.setEnabled(
+                repairable > 0 and mode != "audit" and repair_supported
+            )
             self.action_message.setText(
-                f"{repairable:,} repairable representation-context issues were found "
-                f"across {affected:,} elements."
+                (
+                    f"{repairable:,} missing IFC geometry references are ready to repair."
+                    if repair_supported else
+                    "Automatic repair is unavailable for this file. Audit results remain available."
+                )
             )
             stage = 2
         elif state == WorkflowState.NO_ISSUES:
             self._set_primary(self.select_button)
-            self.select_button.setText("Select Another File")
-            self.scan_button.setText("Scan Again")
+            self.select_button.setText("Check Another IFC")
+            self.scan_button.setText("Check Again")
             self.scan_button.setEnabled(True)
             self.repair_button.setEnabled(False)
-            self.action_message.setText("No targeted representation-context issues were found.")
+            self.action_message.setText(
+                "The known Revit IFC geometry-reference issue was not detected."
+            )
             stage = 2
         elif state == WorkflowState.REPAIRING:
+            self.select_button.setText("Change IFC")
             self._set_primary(None)
             self.scan_button.setEnabled(False)
-            self.repair_button.setText("Repairing...")
+            self.repair_button.setText("Repairing IFC...")
             self.repair_button.setEnabled(False)
-            self.action_message.setText("Repair and verification are in progress.")
+            self.action_message.setText(
+                "Creating and verifying a repaired IFC. The original file will remain unchanged."
+            )
             stage = 2
         elif state == WorkflowState.COMPLETED:
             self._set_primary(None)
             self.action_message.setText("")
             self.completion_card.setObjectName("successCard")
-            self.completion_title.setText("Repair completed successfully")
+            self.completion_title.setText(
+                "Audit Completed"
+                if self._repair_mode_key() == "audit"
+                else "Repair Completed"
+            )
             stage = 3
+            QTimer.singleShot(
+                0,
+                lambda: self.scroll_area.verticalScrollBar().setValue(
+                    self.scroll_area.verticalScrollBar().maximum()
+                ),
+            )
         else:
             self._set_primary(None)
             self.completion_card.setObjectName("errorCard")
-            self.completion_title.setText("Repair could not be completed")
+            self.completion_title.setText("Repair Failed")
             stage = 2
+            QTimer.singleShot(
+                0,
+                lambda: self.scroll_area.verticalScrollBar().setValue(
+                    self.scroll_area.verticalScrollBar().maximum()
+                ),
+            )
 
         for index, label in enumerate(self.stage_labels):
             label.setObjectName(
@@ -539,18 +753,31 @@ class MainWindow(QMainWindow):
             )
             label.style().unpolish(label)
             label.style().polish(label)
+        # Apply button availability last so visibility/layout updates cannot
+        # leave a previously disabled primary action stale.
+        if state == WorkflowState.READY_TO_SCAN:
+            self.scan_button.setObjectName("primary")
+            self.scan_button.style().unpolish(self.scan_button)
+            self.scan_button.style().polish(self.scan_button)
+            self.scan_button.setEnabled(True)
+        elif state == WorkflowState.ISSUES_FOUND:
+            self.scan_button.setEnabled(True)
 
     @Slot()
     def _choose_source(self) -> None:
         value, _ = QFileDialog.getOpenFileName(
-            self, "Select IFC File", "", "IFC files (*.ifc)"
+            self, "Select IFC+SG File", "",
+            "IFC and IFC archives (*.ifc *.ifczip *.zip)"
         )
         if value:
             self._set_source(Path(value))
 
     def _set_source(self, path: Path) -> None:
-        if not path.is_file() or path.suffix.casefold() != ".ifc":
-            QMessageBox.warning(self, "Invalid IFC", "Select a readable .ifc file.")
+        if not path.is_file() or path.suffix.casefold() not in SUPPORTED_INPUT_SUFFIXES:
+            QMessageBox.warning(
+                self, "Invalid input",
+                "Select a readable .ifc, .ifczip, or .zip file containing one IFC."
+            )
             return
         stat = path.stat()
         self.source_path = path.resolve()
@@ -561,13 +788,18 @@ class MainWindow(QMainWindow):
         self.report = None
         self.report_path = None
         self.file_name.setText(path.name)
-        schema = self.metadata.schema or "Schema not read yet"
+        schema = self.metadata.schema or "Schema will be assessed during pre-scan"
         self.file_meta.setText(
-            f"{_format_bytes(stat.st_size)}  |  {schema}  |  Modified "
+            f"{format_bytes(stat.st_size)}  |  {schema}  |  Modified "
             f"{self.metadata.modified:%d %b %Y, %I:%M %p}"
         )
         self.file_path.setText(str(self.source_path))
-        self.output_edit.setText(str(default_repaired_path(self.source_path)))
+        default_output = (
+            default_repaired_path(self.source_path)
+            if self.source_path.suffix.casefold() == ".ifc"
+            else self.source_path.with_name(f"{self.source_path.stem}_repaired.ifc")
+        )
+        self.output_edit.setText(str(default_output))
         self._clear_metrics()
         self._apply_state(WorkflowState.READY_TO_SCAN)
 
@@ -575,6 +807,91 @@ class MainWindow(QMainWindow):
         for metric in self.metrics.values():
             metric.set_value(0)
         self.breakdown.setText("")
+        if hasattr(self, "repair_summary"):
+            self.repair_summary.setText(
+                "The results will explain whether the supported Revit export issue was found."
+            )
+        if hasattr(self, "classification_tree"):
+            self.classification_tree.clear()
+
+    def _repair_mode_key(self) -> str:
+        return "audit" if self.repair_mode_audit.isChecked() else "advanced"
+
+    @Slot(bool)
+    def _repair_mode_changed(self, checked: bool) -> None:
+        if not checked:
+            return
+        mode = self._repair_mode_key()
+        notes = {
+            "advanced": (
+                "Check the IFC, repair all supported issues that can be resolved safely, "
+                "and verify the repaired IFC."
+            ),
+            "audit": (
+                "Check the IFC and generate a report without changing the file."
+            ),
+        }
+        self.repair_mode_note.setText(notes[mode])
+        if self.source_path and self.state not in {
+            WorkflowState.SCANNING, WorkflowState.REPAIRING,
+        }:
+            self.report = None
+            self._clear_metrics()
+            self._apply_state(WorkflowState.READY_TO_SCAN)
+
+    def _automatic_repair_supported(self) -> bool:
+        if not self.report or not self.report.file_assessment:
+            return False
+        assessment = self.report.file_assessment
+        if (assessment.schema or "").upper() != "IFC4" or not assessment.ifc_sg:
+            return False
+        return assessment.ifc_sg.likely_exporter in {
+            "Autodesk Revit 2025", "Autodesk Revit 2026",
+        }
+
+    @Slot(object)
+    def _populate_classification_category(self, category_item: QTreeWidgetItem) -> None:
+        category = category_item.data(0, Qt.ItemDataRole.UserRole)
+        populated_role = int(Qt.ItemDataRole.UserRole) + 1
+        if not category or category_item.data(0, populated_role) or not self.report:
+            return
+        category_item.takeChildren()
+        records = [
+            item for item in self.report.diagnoses
+            if item.classification.value == category
+        ]
+        for diagnosis in records:
+            proposed = (
+                f"#{diagnosis.proposed_context.step_id}"
+                if diagnosis.proposed_context else "-"
+            )
+            product = diagnosis.product_class or "No ultimate product"
+            if diagnosis.ultimate_product_count > 1:
+                product = f"{diagnosis.ultimate_product_count:,} products"
+            child = QTreeWidgetItem([
+                f"#{diagnosis.representation_step_id}",
+                (
+                    f"{diagnosis.representation_identifier or '-'} / "
+                    f"{diagnosis.representation_type or '-'}"
+                ),
+                product,
+                f"{diagnosis.usage_count:,}",
+                proposed,
+                diagnosis.confidence_level.value,
+                diagnosis.proposed_action,
+            ])
+            detail = "\n".join([
+                f"Rule: {diagnosis.rule_id or '-'}",
+                f"Schema: {diagnosis.schema_status}",
+                f"Rendering risk: {diagnosis.rendering_risk}",
+                f"Downstream risk: {diagnosis.downstream_processing_risk}",
+                f"Priority: {diagnosis.repair_priority}",
+                "Evidence: " + "; ".join(diagnosis.evidence + diagnosis.conflicts),
+            ])
+            for column in range(7):
+                child.setToolTip(column, detail)
+            category_item.addChild(child)
+        category_item.setData(0, populated_role, True)
 
     def _output_mode_changed(self, save_as: bool) -> None:
         if not self.source_path:
@@ -615,11 +932,18 @@ class MainWindow(QMainWindow):
         self.started_at = datetime.now()
         self.temporary_path = None
         self.elapsed_timer.start()
+        self.progress_stage.setText(
+            "Starting IFC review" if operation == "scan" else "Starting IFC repair"
+        )
         self.progress.setRange(0, 0)
-        self.progress_detail.setText("Starting...")
+        self.progress.setFormat("Starting...")
+        self.progress_detail.setText(
+            "The operation is running. Progress updates will appear here."
+        )
         self._apply_state(
             WorkflowState.SCANNING if operation == "scan" else WorkflowState.REPAIRING
         )
+        QTimer.singleShot(0, self._show_active_progress)
         self.thread = QThread(self)
         self.worker = TaskWorker(function)
         self.worker.moveToThread(self.thread)
@@ -635,17 +959,31 @@ class MainWindow(QMainWindow):
         self.thread.start()
 
     @Slot()
+    def _show_active_progress(self) -> None:
+        """Keep the running operation visible instead of hiding it below the fold."""
+        self.scroll_area.ensureWidgetVisible(self.progress_card, 0, 12)
+
+    @Slot()
     def scan(self) -> None:
         if not self.source_path:
             return
         path = self.source_path
 
         def operation(telemetry: Callable[[StageUpdate], None]) -> RunReport:
-            report = analyse(
-                path, validate=False, quick=True,
-                cancelled=self.token.cancelled, telemetry=telemetry,
-            )
-            return report
+            with prepare_input(path) as prepared:
+                report = analyse(
+                    prepared.ifc_path, validate=False, quick=True,
+                    cancelled=self.token.cancelled, telemetry=telemetry,
+                    repair_mode=self._repair_mode_key(),
+                )
+                report.source = str(path)
+                report.repair_mode = (
+                    "Audit Only" if self._repair_mode_key() == "audit" else "Repair IFC"
+                )
+                if report.file_assessment:
+                    report.file_assessment.original_name = path.name
+                    report.file_assessment.input_kind = prepared.input_kind
+                return report
 
         self._start_job("scan", operation)
 
@@ -653,7 +991,7 @@ class MainWindow(QMainWindow):
     def repair(self) -> None:
         if not self.source_path or not self.report:
             return
-        save_as = self.save_as_radio.isChecked()
+        save_as = True
         output = Path(self.output_edit.text()).expanduser().resolve()
         if save_as and output == self.source_path:
             QMessageBox.warning(
@@ -666,73 +1004,114 @@ class MainWindow(QMainWindow):
                 "Choose a different output filename. Existing files are not overwritten in recommended mode.",
             )
             return
-        if not save_as:
-            backup = overwrite_backup_path(self.source_path)
-            dialog = QMessageBox(self)
-            dialog.setWindowTitle("Replace original IFC?")
-            dialog.setIcon(QMessageBox.Icon.Warning)
-            dialog.setText("Replace original IFC?")
-            dialog.setInformativeText(
-                f"Original:\n{self.source_path.name}\n\nBackup:\n{backup.name}\n\n"
-                "The repaired model will replace the original filename."
-            )
-            replace_button = dialog.addButton(
-                "Replace and Repair", QMessageBox.ButtonRole.AcceptRole
-            )
-            dialog.addButton("Cancel", QMessageBox.ButtonRole.RejectRole)
-            dialog.exec()
-            if dialog.clickedButton() is not replace_button:
-                return
+        if self.report.file_assessment and self.report.file_assessment.ifc_sg:
+            assessment = self.report.file_assessment.ifc_sg
+            if assessment.classification.value == "Not identifiable as IFC+SG":
+                response = QMessageBox.warning(
+                    self,
+                    "IFC+SG identification not confirmed",
+                    "This file could not be confidently identified as an IFC+SG "
+                    "export. Repair rules may not be applicable. Audit Only is "
+                    "recommended.\n\nContinue with the selected repair mode?",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                    QMessageBox.StandardButton.No,
+                )
+                if response != QMessageBox.StandardButton.Yes:
+                    return
 
-        self.settings.setValue("full_validation", self.full_validation.isChecked())
         self.settings.setValue("last_output_directory", str(output.parent))
-        config = RepairConfig(
-            source=self.source_path,
-            output=None if not save_as else output,
-            create_backup=not save_as,
-            replace_original_with_backup=not save_as,
-            full_validation=self.full_validation.isChecked(),
-            repair_mode="targeted",
-        )
-        self._start_job(
-            "repair", lambda telemetry: repair_file(
-                config, cancelled=self.token.cancelled, telemetry=telemetry
-            ),
-        )
+        def operation(telemetry: Callable[[StageUpdate], None]) -> RunReport:
+            with prepare_input(self.source_path) as prepared:
+                config = RepairConfig(
+                    source=prepared.ifc_path,
+                    output=output,
+                    create_backup=False,
+                    replace_original_with_backup=False,
+                    full_validation=False,
+                    repair_mode=self._repair_mode_key(),
+                )
+                report = repair_file(
+                    config, cancelled=self.token.cancelled, telemetry=telemetry
+                )
+                report.source = str(self.source_path)
+                report.repair_mode = "Repair IFC"
+                if report.file_assessment:
+                    report.file_assessment.original_name = self.source_path.name
+                    report.file_assessment.input_kind = prepared.input_kind
+                return report
+        self._start_job("repair", operation)
 
     @Slot(object)
     def _stage_changed(self, update: StageUpdate) -> None:
         self.current_stage = update
-        self.progress_stage.setText(update.message)
+        stage_messages = {
+            "input_metadata": "Preparing the selected IFC",
+            "step_prescan": "Checking IFC+SG file compatibility",
+            "ifc_opening": "Opening the IFC model",
+            "collect_target_elements": "Checking geometry references",
+            "collect_shape_representations": "Checking geometry references",
+            "context_index": "Reviewing available geometry references",
+            "opening_relationships": "Reviewing model relationships",
+            "context_resolution": "Preparing safe repair recommendations",
+            "indirect_context_index": "Reviewing available geometry references",
+            "indirect_product_ownership": "Reviewing model relationships",
+            "indirect_shape_aspects": "Reviewing indirect geometry references",
+            "indirect_representation_index": "Reviewing reusable geometry references",
+            "indirect_classification": "Preparing repair results",
+            "abandoned_temp_cleanup": "Preparing repaired IFC",
+            "output_preflight": "Checking available disk space",
+            "build_patch_plan_inputs": "Preparing safe repairs",
+            "build_patch_plan": "Preparing safe repairs",
+            "validate_patch_plan": "Checking repair plan",
+            "create_temporary_output": "Preparing repaired IFC",
+            "apply_patches": "Saving repaired IFC",
+            "flush_output": "Saving repaired IFC",
+            "output_size_verification": "Checking repaired IFC",
+            "step_envelope_verification": "Checking repaired IFC structure",
+            "targeted_verification": "Verifying repaired geometry references",
+            "unexpected_change_audit": "Checking for unexpected model changes",
+            "atomic_replacement": "Finalising repaired IFC",
+            "generate_pdf_report": "Generating report summary",
+            "generate_html_report": "Generating detailed report",
+            "repair_complete": "Repair completed",
+            "scan_complete": "Review completed",
+        }
+        message = stage_messages.get(update.stage_id)
+        if message is None and update.stage_id.startswith("audit_"):
+            message = "Running additional IFC+SG checks"
+        self.progress_stage.setText(message or "Checking IFC")
         self.cancel_button.setEnabled(update.cancellable)
         self.cancel_button.setText("Cancel" if update.cancellable else "Stop After Current Stage")
         if update.bytes_processed is not None and update.bytes_total:
             self.progress.setRange(0, 1000)
+            self.progress.setFormat("%p%")
             self.progress.setValue(min(1000, int(update.bytes_processed * 1000 / update.bytes_total)))
             detail = (
-                f"{_format_bytes(update.bytes_processed)} of {_format_bytes(update.bytes_total)}  |  "
+                f"{format_bytes(update.bytes_processed)} of {format_bytes(update.bytes_total)}  |  "
                 f"{update.bytes_processed * 100 / update.bytes_total:.0f}%"
             )
             if update.throughput_bytes_per_second is not None:
-                detail += f"  |  {_format_bytes(int(update.throughput_bytes_per_second))}/s"
+                detail += f"  |  {format_bytes(int(update.throughput_bytes_per_second))}/s"
             if update.elapsed_seconds is not None:
                 detail += f"  |  Elapsed {int(update.elapsed_seconds)//60:02d}:{int(update.elapsed_seconds)%60:02d}"
             if update.estimated_remaining_seconds is not None:
                 remaining = max(0, int(update.estimated_remaining_seconds))
                 detail += f"  |  Remaining {remaining//60:02d}:{remaining%60:02d}"
             if update.current is not None and update.total:
-                detail += f"  |  Changes {update.current:,}/{update.total:,}"
+                detail += f"  |  Repairs {update.current:,}/{update.total:,}"
         elif update.current is not None and update.total:
             self.progress.setRange(0, update.total)
+            self.progress.setFormat("%p%")
             self.progress.setValue(update.current)
             detail = f"{update.current:,} of {update.total:,}"
         else:
             self.progress.setRange(0, 0)
+            self.progress.setFormat("Working...")
             detail = "This stage may take several minutes for large IFC files."
         if update.temporary_path:
             self.temporary_path = update.temporary_path
         if update.output_size is not None:
-            detail += f"  |  Temporary output: {_format_bytes(update.output_size)}"
+            detail += f"  |  Saved: {format_bytes(update.output_size)}"
         self.progress_detail.setText(detail)
 
     @Slot(object)
@@ -742,7 +1121,32 @@ class MainWindow(QMainWindow):
         self.temporary_path = None
         if self.operation == "scan":
             self._show_scan_results(report)
-            if report.diagnoses:
+            if self._repair_mode_key() == "audit":
+                self.html_report_action.setEnabled(
+                    bool(report.report_paths.get("html"))
+                )
+                self.pdf_report_action.setEnabled(
+                    bool(report.report_paths.get("pdf"))
+                )
+                self.repaired_ifc_action.setEnabled(False)
+                self.open_ifc_button.setEnabled(False)
+                self.report_button.setEnabled(True)
+                self.completion_title.setText("Audit Completed")
+                review = (
+                    report.summary_counts.get("ReportOnlyFindings", 0)
+                    + report.summary_counts.get("AmbiguousFindings", 0)
+                )
+                self.completion_summary.setText(
+                    f"{report.summary_counts.get('AffectedRepresentations', 0):,} "
+                    f"geometry references detected\n"
+                    f"{review:,} items recommended for review in Revit\n\n"
+                    "✓  Original IFC preserved\n"
+                    "✓  Detailed report created\n\n"
+                    f"Completed in {_format_duration(report.total_duration_seconds)}"
+                )
+                self._apply_state(WorkflowState.COMPLETED)
+                return
+            if report.diagnoses or report.audit_findings:
                 self._apply_state(WorkflowState.ISSUES_FOUND)
             else:
                 self._apply_state(WorkflowState.NO_ISSUES)
@@ -752,20 +1156,30 @@ class MainWindow(QMainWindow):
         html = report.report_paths.get("html")
         self.report_path = Path(html) if html else None
         repaired = report.summary_counts.get("SuccessfullyRepaired", 0)
-        affected = report.summary_counts.get("ElementsAffected", 0)
         remaining = report.summary_counts.get("TargetedIssuesRemaining", 0)
-        verification = "Passed" if report.targeted_verification.get("passed") else "Not passed"
-        duration = sum(report.durations.values())
+        review = (
+            report.summary_counts.get("ReportOnlyFindings", 0)
+            + report.summary_counts.get("AmbiguousFindings", 0)
+            + remaining
+        )
+        verification = bool(report.targeted_verification.get("passed"))
+        duration = report.total_duration_seconds or sum(report.durations.values())
+        output_name = Path(report.output).name if report.output else "Not created"
         self.completion_summary.setText(
-            f"{repaired:,} representations repaired across {affected:,} elements\n"
-            f"{remaining:,} targeted issues remaining  |  Verification: {verification}\n"
-            f"Original: {report.source}\nRepaired: {report.output}\n"
-            f"Backup: {report.backup or 'Not required - original unchanged'}\n"
-            f"Output size: {_format_bytes(report.output_size)}  |  Duration: {duration:.1f} seconds"
+            f"{repaired:,} geometry references repaired\n"
+            f"{review:,} items recommended for review in Revit\n\n"
+            f"{'✓' if verification else '•'}  IFC "
+            f"{'verified' if verification else 'verification requires review'}\n"
+            f"{'✓' if report.change_audit.get('passed') else '•'}  "
+            f"{'No unexpected model changes detected' if report.change_audit.get('passed') else 'Change verification requires review'}\n"
+            "✓  Original IFC preserved\n\n"
+            f"Output\n{output_name}\n\n"
+            f"Completed in {_format_duration(duration)}"
         )
         self.html_report_action.setEnabled(bool(report.report_paths.get("html")))
         self.pdf_report_action.setEnabled(bool(report.report_paths.get("pdf")))
         self.repaired_ifc_action.setEnabled(bool(report.output))
+        self.open_ifc_button.setEnabled(bool(report.output))
         self.report_button.setEnabled(any((
             self.html_report_action.isEnabled(), self.pdf_report_action.isEnabled(),
             self.repaired_ifc_action.isEnabled(),
@@ -773,30 +1187,151 @@ class MainWindow(QMainWindow):
         self.details_text.setText(self._technical_details(report))
         self._apply_state(WorkflowState.COMPLETED)
 
+    def _show_classification_results(self, report: RunReport) -> None:
+        self.classification_tree.clear()
+        labels = {
+            RepresentationClassification.DIRECT_PRODUCT.value: "Direct Product",
+            RepresentationClassification.SHAPE_ASPECT_PRODUCT.value:
+                "Shape Aspect - Product",
+            RepresentationClassification.REPRESENTATION_MAP.value:
+                "Reusable Representation Map",
+            RepresentationClassification.SHAPE_ASPECT_REPRESENTATION_MAP.value:
+                "Shape Aspect - Representation Map",
+            RepresentationClassification.ORPHANED.value: "Orphaned",
+            RepresentationClassification.AMBIGUOUS.value: "Ambiguous",
+            RepresentationClassification.UNSUPPORTED.value: "Unsupported",
+        }
+        for category in RepresentationClassification:
+            values = report.classification_counts.get(category.value, {})
+            detected = values.get("detected", 0)
+            if not detected:
+                continue
+            parent = QTreeWidgetItem([
+                f"{labels[category.value]} ({detected:,})",
+                "",
+                "",
+                "",
+                "",
+                f"HIGH: {values.get('high_confidence', 0):,}",
+                (
+                    f"Auto-repair {values.get('auto_repair', 0):,}; "
+                    f"report only {values.get('reported_only', 0):,}"
+                ),
+            ])
+            parent.setData(0, Qt.ItemDataRole.UserRole, category.value)
+            parent.addChild(QTreeWidgetItem(["Loading..."]))
+            self.classification_tree.addTopLevelItem(parent)
+        for category_name in (
+            "Space Geometry",
+            "Quantity Information",
+            "Georeferencing",
+            "IFC Structure",
+            "Other IFC+SG Checks",
+        ):
+            findings = [
+                item for item in report.audit_findings
+                if item.category == category_name
+            ]
+            if not findings:
+                continue
+            parent = QTreeWidgetItem([
+                f"{category_name} ({len(findings):,})",
+                "",
+                "",
+                "",
+                "",
+                "REPORT ONLY",
+                "No change applied",
+            ])
+            for finding in findings[:500]:
+                parent.addChild(QTreeWidgetItem([
+                    f"{finding.rule_id} / #{finding.entity_step_id or '—'}",
+                    finding.title,
+                    finding.entity_type or "—",
+                    finding.submission_risk,
+                    "",
+                    finding.confidence,
+                    finding.action,
+                ]))
+            self.classification_tree.addTopLevelItem(parent)
+        for column in range(7):
+            self.classification_tree.resizeColumnToContents(column)
+
     def _show_scan_results(self, report: RunReport) -> None:
         counts = report.summary_counts
+        review_count = (
+            counts.get("ReportOnlyFindings", 0)
+            + counts.get("AmbiguousFindings", 0)
+        )
         values = {
-            "Elements Scanned": counts.get("ElementsScanned", 0),
-            "Elements Affected": counts.get("ElementsAffected", 0),
-            "Representations Scanned": counts.get("RepresentationsScanned", 0),
-            "Targeted Issues": counts.get("AffectedRepresentations", 0),
-            "Automatically Repairable": counts.get("AutomaticallyRepairable", 0),
-            "Not Automatically Repairable": counts.get("NotAutomaticallyRepairable", 0),
-            "Successfully Repaired": counts.get("SuccessfullyRepaired", 0),
-            "Issues Remaining": counts.get("TargetedIssuesRemaining", 0),
+            "Geometry References to Repair": counts.get("AffectedRepresentations", 0),
+            "Ready to Repair": counts.get("AutomaticallyRepairable", 0),
+            "Items to Check in Revit": review_count,
+            "IFC Verification": (
+                "Verified" if report.targeted_verification.get("passed") else "Ready"
+            ),
         }
         for key, value in values.items():
             self.metrics[key].set_value(value)
-        groups = Counter(
-            (item.representation_identifier or "Unidentified",
-             item.representation_type or "Unspecified")
-            for item in report.diagnoses
-        )
-        self.breakdown.setText("  |  ".join(
-            f"{identifier} / {kind}: {count:,}"
-            for (identifier, kind), count in sorted(groups.items())
-        ))
+        self.breakdown.setText("")
         self.details_text.setText(self._technical_details(report))
+        issue_count = counts.get("AffectedRepresentations", 0)
+        ready = counts.get("AutomaticallyRepairable", 0)
+        self.repair_summary.setText(
+            "\n".join((
+                (
+                    "✓  Known Revit IFC export issue detected"
+                    if issue_count else
+                    "✓  Known Revit IFC export issue was not detected"
+                ),
+                (
+                    "✓  Automatic repair is available"
+                    if ready and self._automatic_repair_supported() else
+                    "•  Automatic repair is not available for this file"
+                ),
+                "✓  Original IFC will remain unchanged",
+                (
+                    "✓  A repaired IFC will be created"
+                    if ready and self._repair_mode_key() != "audit"
+                    and self._automatic_repair_supported() else
+                    "✓  Audit report will be created without changing the IFC"
+                ),
+            ))
+        )
+        assessment = report.file_assessment
+        if assessment:
+            self.assessment_schema.setText(
+                f"IFC Schema\n{assessment.schema or 'Unknown'}"
+            )
+            ifc_sg = assessment.ifc_sg
+            self.assessment_exporter.setText(
+                f"Authoring Tool\n"
+                f"{ifc_sg.likely_exporter if ifc_sg else 'Unknown'}"
+            )
+            self.assessment_ifcsg.setText(
+                "Workflow\n"
+                + (
+                    "IFC+SG Detected"
+                    if ifc_sg and ifc_sg.classification.value == "Likely IFC+SG"
+                    else ifc_sg.classification.value if ifc_sg else "Not assessed"
+                )
+            )
+            self.assessment_size.setText(f"File Size\n{format_bytes(assessment.size_bytes)}")
+            if self._automatic_repair_supported():
+                status = "This file is suitable for the supported IFC+SG repair workflow."
+                colour, background = "#175cd3", "#eff8ff"
+            else:
+                status = (
+                    "This file is outside the currently supported repair workflow. "
+                    "Audit results are still available. Automatic repair has been disabled."
+                )
+                colour, background = "#b54708", "#fffaeb"
+            self.assessment_status.setText(status)
+            self.assessment_status.setStyleSheet(
+                f"background:{background};color:{colour};border-radius:8px;padding:10px;"
+            )
+            evidence = (ifc_sg.evidence + ifc_sg.warnings) if ifc_sg else []
+            self.assessment_evidence.setText(" • ".join(evidence))
 
     @staticmethod
     def _technical_details(report: RunReport) -> str:
@@ -807,6 +1342,8 @@ class MainWindow(QMainWindow):
         return (
             f"Rule: {report.active_rule_id} v{report.active_rule_version}\n"
             f"Schema: {report.schema}\nInput: {report.source}\n"
+            f"Selected rules: {', '.join(report.selected_rules) or 'None'}\n"
+            f"Skipped rules: {len(report.skipped_rules)}\n"
             f"Output: {report.output or 'Not written'}\n"
             f"Diagnostic log: {report.log_path or 'Not created'}\n\n{timings}"
         )
@@ -814,19 +1351,20 @@ class MainWindow(QMainWindow):
     @Slot(object)
     def _failed(self, details: dict[str, str]) -> None:
         self.elapsed_timer.stop()
-        source_status = (
-            "The original IFC was not changed."
-            if self.save_as_radio.isChecked()
-            else "Check the backup path before retrying."
-        )
         self.completion_summary.setText(
-            f"Failed stage: {details.get('stage', 'unknown')}\n"
+            "The repair could not be completed safely.\n\n"
+            "✓  Original IFC preserved\n"
+            "✓  Incomplete output removed\n\n"
+            "No repaired IFC was published. Open Technical Details for diagnostic information."
+        )
+        self.details_text.setText(
+            f"Stage: {details.get('stage', 'unknown')}\n"
             f"{details.get('type', 'Error')}: {details.get('message', 'Unknown error')}\n"
-            f"{source_status}\n"
             f"Temporary output removed: {details.get('temporary_file_removed', True)}\n"
             f"Output: {details.get('final_output_path', self.output_edit.text())}\n"
             f"Debug log: {details.get('log_path') or 'Not enabled'}"
         )
+        self.open_ifc_button.setEnabled(False)
         self.report_button.setEnabled(False)
         self._apply_state(WorkflowState.FAILED)
 
@@ -834,10 +1372,15 @@ class MainWindow(QMainWindow):
     def _cancelled(self, details: dict[str, str]) -> None:
         self.elapsed_timer.stop()
         self.completion_summary.setText(
-            f"Operation cancelled safely after stage: {details.get('stage', 'unknown')}\n"
-            f"Temporary output removed: {details.get('temporary_file_removed', True)}\n"
-            f"Original IFC unchanged: {details.get('source_remains_unchanged', True)}"
+            "The operation was cancelled safely.\n\n"
+            "✓  Original IFC preserved\n"
+            "✓  Incomplete output removed"
         )
+        self.details_text.setText(
+            f"Cancelled after stage: {details.get('stage', 'unknown')}\n"
+            f"Temporary output removed: {details.get('temporary_file_removed', True)}"
+        )
+        self.open_ifc_button.setEnabled(False)
         self._apply_state(WorkflowState.FAILED)
 
     @Slot()
@@ -856,9 +1399,9 @@ class MainWindow(QMainWindow):
         self.elapsed_label.setText(f"Elapsed {seconds // 60:02d}:{seconds % 60:02d}")
         if self.temporary_path and self.temporary_path.exists():
             size = self.temporary_path.stat().st_size
-            current = self.progress_detail.text().split("  |  Temporary output:")[0]
+            current = self.progress_detail.text().split("  |  Saved:")[0]
             self.progress_detail.setText(
-                f"{current}  |  Temporary output: {_format_bytes(size)}"
+                f"{current}  |  Saved: {format_bytes(size)}"
             )
 
     @Slot(bool)
@@ -891,7 +1434,7 @@ class MainWindow(QMainWindow):
         self.report = None
         self.report_path = None
         self.file_name.setText("No IFC file selected")
-        self.file_meta.setText("Select an IFC file to begin")
+        self.file_meta.setText("Choose an IFC, IFCZIP, or ZIP file to begin")
         self.file_path.setText("")
         self.output_edit.clear()
         self._clear_metrics()
@@ -899,7 +1442,7 @@ class MainWindow(QMainWindow):
 
     def dragEnterEvent(self, event: Any) -> None:
         urls = event.mimeData().urls()
-        if urls and urls[0].toLocalFile().casefold().endswith(".ifc"):
+        if urls and Path(urls[0].toLocalFile()).suffix.casefold() in SUPPORTED_INPUT_SUFFIXES:
             event.acceptProposedAction()
 
     def dropEvent(self, event: Any) -> None:
@@ -915,6 +1458,8 @@ class MainWindow(QMainWindow):
             )
             if answer == QMessageBox.StandardButton.Yes:
                 self.cancel()
-            event.ignore()
+                event.ignore()
+            else:
+                event.accept()
             return
         event.accept()

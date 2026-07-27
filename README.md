@@ -1,57 +1,72 @@
-# IFC Repair Studio
+# IFC+SG Repair Assistant
 
-A Windows desktop and command-line utility that detects, explains, repairs, and
-revalidates missing `IfcShapeRepresentation.ContextOfItems` references. It never
-uses a fixed STEP ID, never replaces arbitrary `$` values, and never overwrites
-the source by default.
+IFC+SG Repair Assistant helps BIM users detect and repair a known
+geometry-reference issue found in IFC+SG files exported from Autodesk Revit
+2025 and Revit 2026.
 
-## Status
+The application restores missing IFC geometry references without changing the
+model geometry, helping prepare the IFC for the next stage of CORENET X
+submission.
 
-The engine, CLI, state-driven desktop UI, versioned slab rule, deterministic resolver,
-manifest-verified atomic repair, optional debug diagnostics, concise PDF executive reports,
-interactive offline HTML engineering reports, comparison
-tools, and failure-safety tests are implemented. External CORENET X testing remains a
-separate acceptance step.
+## Production scope
 
-## Install on Windows
+- Schema: IFC4 only for repair; unsupported schemas receive a limited audit.
+- Inputs: `.ifc`, `.ifczip`, or `.zip` containing exactly one IFC.
+- Supported exporters: Autodesk Revit 2025 and Autodesk Revit 2026 IFC+SG.
+- Modes: Audit Only and Repair IFC.
+- Writer: one-pass, variable-length STEP patching to a same-directory temporary
+  output, mandatory verification, then atomic installation.
+- Reports: concise PDF and interactive offline HTML. JSON is optional.
 
-Install 64-bit Python 3.11 or 3.12, then from PowerShell:
+Production repair rules:
+
+- `DIRECT_PRODUCT_MISSING_CONTEXT_V2`
+- `SHAPE_ASPECT_PRODUCT_MISSING_CONTEXT_V1`
+- `REPRESENTATION_MAP_MISSING_CONTEXT_V1`
+- `REPRESENTATION_MAP_FOOTPRINT_MISSING_CONTEXT_V1`
+
+Report-only beta checks:
+
+- `IFCSPACE_BODY_AUDIT_V1`
+- `BASE_QUANTITY_AUDIT_V1`
+- `IFCSG_GEOREFERENCING_AUDIT_V1`
+
+## Development
 
 ```powershell
 py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-python -m pip install -e ".[ui,test]"
+python -m pip install -e ".[ui,test,build,diagnostics]"
 pytest
 ifc-context-repair-gui
 ```
 
-IfcOpenShell is deliberately a required runtime dependency. The prescan and its
-tests can run without it; semantic diagnosis and repair cannot.
-
-## CLI
+CLI examples:
 
 ```powershell
-ifc-context-repair scan model.ifc --json
-ifc-context-repair validate model.ifc --json
-ifc-context-repair repair model.ifc --output model_repaired.ifc --report report.pdf
-ifc-context-repair compare clean.ifc faulty.ifc --output comparison.json
-ifc-context-repair benchmark model.ifc
+ifc-context-repair scan model.ifczip --mode audit --json
+ifc-context-repair scan model.ifc --mode safe
+ifc-context-repair repair model.ifc --mode advanced --output model_repaired.ifc
 ```
 
-Exit codes are `0` success, `1` affected/no repair, `2` validation failure,
-`3` ambiguous, `4` input/parse error, `5` output/write error, and `6` unexpected.
+Build:
 
-## Safety model
+```powershell
+.\scripts\build_windows.ps1 -Python .\.venv\Scripts\python.exe
+```
 
-Only semantic `IfcShapeRepresentation` candidates are considered. Automatic
-repair is limited to **Safe to repair** decisions. Warning-level decisions need
-an explicit option; ambiguous and unrepairable cases are never changed. Output is
-written once to a same-volume temporary file, verified against an exact repair
-manifest, and atomically installed. Full IFC validation is optional.
-See [docs/architecture.md](docs/architecture.md) and [docs/user-guide.md](docs/user-guide.md).
+See:
 
-The desktop UI uses a clear Select File -> Scan -> Repair and Verify workflow. The
-recommended default writes `<name>_repaired.ifc` and never renames the original.
-Advanced overwrite mode creates `<name>.original.ifc` (or a timestamped variant),
-shows the exact paths, and requires explicit confirmation.
+- [Production architecture](docs/production-architecture-v1.0.md)
+- [User guide](docs/user-guide-v1.0.md)
+- [Rule development guide](docs/ifc-sg-rule-development-guide.md)
+- [Known limitations](docs/known-limitations-v1.0.md)
+- [Build instructions](docs/build-v1.0.md)
+- [Performance results](docs/performance-v1.0.md)
+- [Release validation](docs/release-validation-v1.0.md)
+- [PyInstaller warning classification](docs/pyinstaller-warning-classification-v1.0.md)
+
+> This application performs targeted repairs for known IFC+SG export issues.
+> It is not a complete IFC validator or CORENET X compliance checker. A
+> repaired IFC should still undergo the normal submission validation process.

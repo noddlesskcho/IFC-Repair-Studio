@@ -12,6 +12,8 @@ from .comparator import compare_files
 from .baseline import analyse_clean_baselines
 from .config import RepairConfig
 from .errors import DependencyError, InputError, OutputError, ParseError, RepairError
+from .file_io import prepare_input
+from .naming import default_repaired_path
 from .parser import open_model
 from .prescan import scan_step
 from .repair import analyse, repair_file
@@ -26,6 +28,9 @@ def _parser() -> argparse.ArgumentParser:
     scan.add_argument("input", type=Path)
     scan.add_argument("--json", action="store_true")
     scan.add_argument("--prescan-only", action="store_true")
+    scan.add_argument(
+        "--mode", choices=["safe", "advanced", "audit"], default="safe",
+    )
     validate = sub.add_parser("validate", help="Run IFC schema validation")
     validate.add_argument("input", type=Path)
     validate.add_argument("--json", action="store_true")
@@ -35,10 +40,9 @@ def _parser() -> argparse.ArgumentParser:
     repair.add_argument("--output-dir", type=Path)
     repair.add_argument("--include-warnings", action="store_true")
     repair.add_argument("--geometry-test", action="store_true")
-    repair.add_argument("--mode", choices=["targeted"], default="targeted")
-    repair.add_argument("--replace-original", action="store_true",
-                        help="Advanced mode: back up and atomically replace the source")
-    repair.add_argument("--no-backup", action="store_true", help=argparse.SUPPRESS)
+    repair.add_argument(
+        "--mode", choices=["safe", "advanced"], default="safe",
+    )
     repair.add_argument("--full-validation", action="store_true")
     repair.add_argument("--overwrite-output", action="store_true")
     repair.add_argument("--report", type=Path)
@@ -62,16 +66,18 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _scan(args: argparse.Namespace) -> int:
-    if args.prescan_only:
-        found = scan_step(args.input)
-        payload = [vars(c) if hasattr(c, "__dict__") else {
-            "step_id": c.step_id, "byte_offset": c.byte_offset,
-            "line_number": c.line_number, "record_preview": c.record_preview,
-        } for c in found]
-        print(json.dumps(payload, indent=2) if args.json else
-              "\n".join(f"#{c.step_id} line {c.line_number} byte {c.byte_offset}" for c in found))
-        return 1 if found else 0
-    report = analyse(args.input, validate=False)
+    with prepare_input(args.input) as prepared:
+        if args.prescan_only:
+            found = scan_step(prepared.ifc_path)
+            payload = [vars(c) if hasattr(c, "__dict__") else {
+                "step_id": c.step_id, "byte_offset": c.byte_offset,
+                "line_number": c.line_number, "record_preview": c.record_preview,
+            } for c in found]
+            print(json.dumps(payload, indent=2) if args.json else
+                  "\n".join(f"#{c.step_id} line {c.line_number} byte {c.byte_offset}" for c in found))
+            return 1 if found else 0
+        report = analyse(prepared.ifc_path, validate=False, repair_mode=args.mode)
+        report.source = str(args.input.resolve())
     if args.json:
         print(json.dumps(report.to_dict(), indent=2))
     else:
@@ -87,7 +93,8 @@ def _scan(args: argparse.Namespace) -> int:
 
 
 def _validate(args: argparse.Namespace) -> int:
-    issues = validate_schema(open_model(args.input))
+    with prepare_input(args.input) as prepared:
+        issues = validate_schema(open_model(prepared.ifc_path))
     payload = [vars(i) if hasattr(i, "__dict__") else {
         "level": i.level, "message": i.message, "entity_step_id": i.entity_step_id,
         "attribute": i.attribute,
@@ -101,17 +108,27 @@ def _validate(args: argparse.Namespace) -> int:
 
 
 def _repair(args: argparse.Namespace) -> int:
-    config = RepairConfig(
-        source=args.input, output=args.output, output_dir=args.output_dir,
-        create_backup=args.replace_original and not args.no_backup,
-        replace_original_with_backup=args.replace_original,
-        include_warnings=args.include_warnings,
-        geometry_test=args.geometry_test, repair_mode=args.mode,
-        full_validation=args.full_validation,
-        overwrite_output=args.overwrite_output,
-        debug_logging=args.debug_logging,
-    )
-    report = repair_file(config)
+    with prepare_input(args.input) as prepared:
+        output = args.output
+        if output is None and args.output_dir is None:
+            output = (
+                default_repaired_path(args.input.resolve())
+                if args.input.suffix.casefold() == ".ifc"
+                else args.input.resolve().with_name(
+                    f"{args.input.stem}_repaired.ifc"
+                )
+            )
+        config = RepairConfig(
+            source=prepared.ifc_path, output=output, output_dir=args.output_dir,
+            create_backup=False, replace_original_with_backup=False,
+            include_warnings=args.include_warnings,
+            geometry_test=args.geometry_test, repair_mode=args.mode,
+            full_validation=args.full_validation,
+            overwrite_output=args.overwrite_output,
+            debug_logging=args.debug_logging,
+        )
+        report = repair_file(config)
+        report.source = str(args.input.resolve())
     if args.report:
         paths = write_bundle(report, args.report)
         print(f"Reports: {', '.join(str(p) for p in paths.values())}")
@@ -125,7 +142,12 @@ def _benchmark(args: argparse.Namespace) -> int:
     def run() -> dict[str, object]:
         tracemalloc.start()
         started = time.perf_counter()
-        report = analyse(args.input, validate=not args.quick_scan, quick=args.quick_scan)
+        with prepare_input(args.input) as prepared:
+            report = analyse(
+                prepared.ifc_path,
+                validate=not args.quick_scan,
+                quick=args.quick_scan,
+            )
         _, peak = tracemalloc.get_traced_memory()
         tracemalloc.stop()
         return {"file_size": args.input.stat().st_size, "total_seconds": time.perf_counter() - started,

@@ -13,12 +13,22 @@ from .config import RepairConfig
 from .change_audit import audit_targeted_changes
 from .diagnostics import DiagnosticLogger, system_snapshot
 from .errors import CancelledError, OutputError
-from .models import Diagnosis, RunReport, Status
+from .models import (
+    Diagnosis,
+    IfcSgClassification,
+    ProcessingStrategy,
+    RunReport,
+    Status,
+)
+from .indirect import is_repairable_in_mode
+from .ifc_sg_assessment import build_file_assessment
 from .naming import overwrite_backup_path
 from .output_safety import cleanup_abandoned_temps, preflight_output
-from .parser import open_model, require_ifcopenshell
+from .parser import check_step_envelope, open_model, require_ifcopenshell
 from .reporting import write_html, write_pdf
-from .rules import ACTIVE_RULE
+from .prescan import profile_step
+from .rules import ACTIVE_RULE, RuleScanResult
+from .rules.ifc_sg import IFC_SG_RULES, IfcSgRuleContext
 from .step_patch import apply_patch_plan, build_patch_plan, validate_patch_plan
 from .target_verification import verify_step_envelope, verify_targeted_output
 from .telemetry import StageUpdate, Telemetry, emit
@@ -33,7 +43,7 @@ def _environment() -> dict[str, str]:
 
     ifcopenshell = require_ifcopenshell()
     return {
-        "application_version": "0.4.2",
+        "application_version": "1.0.0",
         "ifcopenshell_version": str(getattr(ifcopenshell, "version", "unknown")),
         "python_version": sys.version.split()[0],
         "operating_system": platform.platform(),
@@ -44,13 +54,11 @@ def _selected(
     diagnoses: list[Diagnosis], include_warnings: bool,
     selected_step_ids: set[int] | None = None,
     minimum_confidence: float = 0.70,
+    repair_mode: str = "safe",
 ) -> list[Diagnosis]:
-    allowed = {Status.SAFE}
-    if include_warnings:
-        allowed.add(Status.WARNING)
     return [
         item for item in diagnoses
-        if item.status in allowed and item.proposed_context
+        if is_repairable_in_mode(item, repair_mode) and item.proposed_context
         and item.confidence >= minimum_confidence and (
             selected_step_ids is None
             or item.representation_step_id in selected_step_ids
@@ -79,21 +87,87 @@ def _analyse_loaded(
     progress: Progress | None,
     telemetry: Telemetry | None = None,
     max_file_size_gb: float | None = None,
+    repair_mode: str = "safe",
 ) -> tuple[RunReport, Any]:
+    total_mark = time.perf_counter()
     started = datetime.now(timezone.utc)
     metadata_mark = time.perf_counter()
     stat = path.stat()
     report = RunReport(
         source=str(path.resolve()), started_at=started.isoformat(),
         environment=_environment(), input_size=stat.st_size,
-        active_rule_id=ACTIVE_RULE.rule_id,
-        active_rule_version=ACTIVE_RULE.version,
+        active_rule_id="IFCSG_RULE_REGISTRY_V1",
+        active_rule_version="1.0",
+        repair_mode=repair_mode.title(),
     )
 
     emit(telemetry, "input_metadata", "Reading input file metadata", current=1, total=1)
     report.durations["input_metadata"] = time.perf_counter() - metadata_mark
     if cancelled and cancelled():
         raise CancelledError("Scan cancelled before IFC opening")
+
+    check_step_envelope(path, max_file_size_gb)
+    emit(
+        telemetry, "step_prescan",
+        "Inspecting IFC schema and selecting applicable IFC+SG checks",
+        bytes_processed=0, bytes_total=stat.st_size, cancellable=True,
+    )
+    mark = time.perf_counter()
+
+    def prescan_progress(current: int, total: int) -> None:
+        emit(
+            telemetry, "step_prescan",
+            "Inspecting IFC structure and known issue signatures",
+            bytes_processed=current, bytes_total=total, cancellable=True,
+        )
+
+    profile = profile_step(
+        path, cancelled=cancelled, progress=prescan_progress,
+    )
+    report.durations["step_prescan"] = time.perf_counter() - mark
+    report.prescan_candidates = profile.candidates
+    report.schema = profile.schema or "Unknown"
+    report.file_assessment = build_file_assessment(path, profile)
+    report.system_diagnostics.update({
+        "processing_strategy": report.file_assessment.strategy.value,
+        "size_category": report.file_assessment.size_category,
+        "prescan_entity_counts": profile.entity_counts,
+        "missing_context_signatures": profile.missing_context_signatures,
+    })
+
+    if (
+        report.file_assessment.strategy is ProcessingStrategy.LIMITED_AUDIT
+        or (profile.schema or "").upper() != "IFC4"
+    ):
+        reason = (
+            f"This file uses {profile.schema or 'an unknown schema'}. The current "
+            "repair rules are designed and tested for IFC+SG IFC4 files. "
+            "No repair has been applied."
+            if (profile.schema or "").upper() != "IFC4"
+            else "Available resources require a streaming limited audit; semantic repair was skipped."
+        )
+        report.errors.append(reason)
+        report.summary_counts = {
+            "ElementsScanned": 0,
+            "ElementsAffected": 0,
+            "RepresentationsScanned": profile.entity_counts.get(
+                "IFCSHAPEREPRESENTATION", 0
+            ),
+            "AffectedRepresentations": len(profile.candidates),
+            "AutomaticallyRepairable": 0,
+            "NotAutomaticallyRepairable": len(profile.candidates),
+            "HighConfidenceRepairable": 0,
+        }
+        report.selected_rules = []
+        report.skipped_rules = {
+            rule.rule_id: reason for rule in IFC_SG_RULES.all()
+        }
+        report.rule_metadata = [rule.metadata() for rule in IFC_SG_RULES.all()]
+        report.finished_at = datetime.now(timezone.utc).isoformat()
+        report.total_duration_seconds = time.perf_counter() - total_mark
+        emit(telemetry, "limited_audit_complete", "Limited structural audit complete",
+             current=1, total=1)
+        return report, None
 
     emit(
         telemetry, "ifc_opening", "Opening and parsing IFC", indeterminate=True,
@@ -106,6 +180,7 @@ def _analyse_loaded(
     if cancelled and cancelled():
         raise CancelledError("Operation cancelled after IFC parsing")
     report.schema = str(getattr(model, "schema", "unknown"))
+    report.file_assessment = build_file_assessment(path, profile, model=model)
 
     try:
         file_name = model.header.file_name
@@ -124,9 +199,16 @@ def _analyse_loaded(
 
     def rule_progress(stage_id: str, current: int, total: int) -> None:
         messages = {
-            "collect_target_slabs": "Collecting slab targets",
-            "collect_shape_representations": "Collecting slab shape representations",
+            "collect_target_elements": "Collecting supported element targets",
+            "collect_shape_representations": "Collecting directly owned shape representations",
+            "context_index": "Building the semantic context index",
+            "opening_relationships": "Checking opening-to-host relationships",
             "context_resolution": "Resolving representation contexts",
+            "indirect_context_index": "Indexing project representation contexts",
+            "indirect_product_ownership": "Indexing product ownership",
+            "indirect_shape_aspects": "Indexing shape-aspect representations",
+            "indirect_representation_index": "Indexing reusable mapped representations",
+            "indirect_classification": "Classifying missing representation contexts",
         }
         message = messages.get(stage_id, "Preparing repair targets")
         emit(
@@ -135,24 +217,53 @@ def _analyse_loaded(
         )
         _legacy_progress(progress, message, current, total, 50)
 
-    emit(telemetry, "collect_target_slabs", "Collecting slab repair targets", current=0, total=1)
-    rule_mark = time.perf_counter()
-    scan = ACTIVE_RULE.detect(
-        model, timings=report.durations, progress=rule_progress,
-        cancelled=cancelled,
+    emit(
+        telemetry, "collect_target_elements",
+        "Collecting supported IFC+SG repair targets", current=0, total=1,
     )
+    rule_mark = time.perf_counter()
+    if profile.candidates:
+        scan = ACTIVE_RULE.detect(
+            model, timings=report.durations, progress=rule_progress,
+            cancelled=cancelled, repair_mode=repair_mode,
+        )
+    else:
+        scan = RuleScanResult(
+            rule_id=ACTIVE_RULE.rule_id,
+            rule_version=ACTIVE_RULE.version,
+            diagnoses=[],
+            targets=[],
+            elements_scanned=len(model.by_type("IfcProduct")),
+            elements_affected=0,
+            representations_scanned=profile.entity_counts.get(
+                "IFCSHAPEREPRESENTATION", 0
+            ),
+            type_counts={},
+            classification_counts={},
+        )
+        report.skipped_rules.update({
+            "DIRECT_PRODUCT_MISSING_CONTEXT_V2": "No missing ContextOfItems found",
+            "SHAPE_ASPECT_PRODUCT_MISSING_CONTEXT_V1": "No missing ContextOfItems found",
+            "REPRESENTATION_MAP_MISSING_CONTEXT_V1": "No missing ContextOfItems found",
+            "REPRESENTATION_MAP_FOOTPRINT_MISSING_CONTEXT_V1": (
+                "No missing ContextOfItems found"
+            ),
+        })
     rule_total = time.perf_counter() - rule_mark
     measured_rule_parts = sum(
         report.durations.get(key, 0.0)
         for key in (
-            "collect_target_slabs", "collect_shape_representations",
-            "context_index", "context_resolution",
+            "collect_target_elements", "collect_shape_representations",
+            "context_index", "opening_relationships", "context_resolution",
+            "indirect_index_build", "indirect_classification",
         )
     )
     report.durations["repair_target_modeling"] = max(
         0.0, rule_total - measured_rule_parts
     )
     report.diagnoses = scan.diagnoses
+    report.element_type_counts = scan.type_counts
+    report.classification_counts = scan.classification_counts
     repairable = sum(target.automatically_repairable for target in scan.targets)
     report.summary_counts = {
         "ElementsScanned": scan.elements_scanned,
@@ -161,7 +272,48 @@ def _analyse_loaded(
         "AffectedRepresentations": len(scan.diagnoses),
         "AutomaticallyRepairable": repairable,
         "NotAutomaticallyRepairable": len(scan.diagnoses) - repairable,
+        "HighConfidenceRepairable": sum(
+            item.status is Status.SAFE and item.proposed_context is not None
+            for item in scan.diagnoses
+        ),
     }
+
+    registry_context = IfcSgRuleContext(
+        model=model,
+        schema=report.schema or "",
+        profile=profile,
+        diagnoses=report.diagnoses,
+    )
+    selection = IFC_SG_RULES.select(registry_context)
+    report.selected_rules = [rule.rule_id for rule in selection.selected]
+    report.skipped_rules.update(selection.skipped)
+    report.rule_metadata = [rule.metadata() for rule in IFC_SG_RULES.all()]
+    for rule in selection.selected:
+        if rule.repair_mode != "AUDIT_ONLY":
+            continue
+        mark = time.perf_counter()
+        emit(
+            telemetry, f"audit_{rule.rule_id.casefold()}",
+            f"Running {rule.title}", indeterminate=True, cancellable=True,
+        )
+        try:
+            report.audit_findings.extend(rule.detect(registry_context))
+        except Exception as exc:
+            report.errors.append(
+                f"Optional audit rule {rule.rule_id} failed: {type(exc).__name__}: {exc}"
+            )
+            report.skipped_rules[rule.rule_id] = f"Rule failure: {exc}"
+        report.durations[f"audit_{rule.rule_id.casefold()}"] = (
+            time.perf_counter() - mark
+        )
+    report.summary_counts.update({
+        "ReportOnlyFindings": len(report.audit_findings) + sum(
+            not target.automatically_repairable for target in scan.targets
+        ),
+        "AmbiguousFindings": sum(
+            item.status is Status.AMBIGUOUS for item in scan.diagnoses
+        ),
+    })
 
     if validate:
         emit(
@@ -176,6 +328,7 @@ def _analyse_loaded(
         report.full_validation_performed = True
 
     report.finished_at = datetime.now(timezone.utc).isoformat()
+    report.total_duration_seconds = time.perf_counter() - total_mark
     emit(telemetry, "scan_complete", "Scan complete", current=1, total=1)
     _legacy_progress(progress, "Scan complete", 1, 1, 100)
     return report, model
@@ -189,11 +342,36 @@ def analyse(
     cancelled: Callable[[], bool] | None = None,
     progress: Progress | None = None,
     telemetry: Telemetry | None = None,
+    repair_mode: str = "safe",
 ) -> RunReport:
     report, _ = _analyse_loaded(
         path.resolve(), validate=validate, quick=quick, cancelled=cancelled,
-        progress=progress, telemetry=telemetry,
+        progress=progress, telemetry=telemetry, repair_mode=repair_mode,
     )
+    if repair_mode.casefold() == "audit":
+        report_base = path.resolve().with_name(f"{path.stem}_IFCSG_Audit_Report")
+        pdf_path = report_base.with_suffix(".pdf")
+        html_path = report_base.with_suffix(".html")
+        mark = time.perf_counter()
+        emit(
+            telemetry, "generate_pdf_report", "Generating PDF audit summary",
+            indeterminate=True, cancellable=True,
+        )
+        write_pdf(report, pdf_path)
+        report.durations["generate_pdf_report"] = time.perf_counter() - mark
+        report.report_paths["pdf"] = str(pdf_path)
+        if cancelled and cancelled():
+            raise CancelledError("Audit cancelled after PDF generation")
+        mark = time.perf_counter()
+        emit(
+            telemetry, "generate_html_report",
+            "Generating HTML classification report",
+            indeterminate=True, cancellable=True,
+        )
+        write_html(report, html_path, cancelled=cancelled)
+        report.durations["generate_html_report"] = time.perf_counter() - mark
+        report.report_paths["html"] = str(html_path)
+        report.finished_at = datetime.now(timezone.utc).isoformat()
     return report
 
 
@@ -260,12 +438,14 @@ def repair_file(
             source, validate=config.full_validation, quick=not config.full_validation,
             cancelled=cancelled, progress=progress, telemetry=telemetry,
             max_file_size_gb=config.max_file_size_gb,
+            repair_mode=config.repair_mode,
         )
         report.log_path = str(diagnostic_log) if config.debug_logging else None
         for analysis_stage in (
-            "input_metadata", "ifc_opening", "collect_target_slabs",
-            "collect_shape_representations", "context_index",
+            "input_metadata", "ifc_opening", "collect_target_elements",
+            "collect_shape_representations", "context_index", "opening_relationships",
             "context_resolution", "repair_target_modeling", "full_validation_before",
+            "indirect_index_build", "indirect_classification",
         ):
             if analysis_stage in report.durations:
                 log_event(
@@ -276,8 +456,15 @@ def repair_file(
                 )
         selected = _selected(
             report.diagnoses, config.include_warnings, config.selected_step_ids,
-            config.minimum_confidence,
+            config.minimum_confidence, config.repair_mode,
         )
+        if (
+            report.file_assessment
+            and report.file_assessment.prescan_counts.get("DUPLICATE_STEP_IDS", 0)
+        ):
+            raise OutputError(
+                "Duplicate STEP IDs were detected. Repair output will not be published."
+            )
         if not selected:
             report.errors.append("No automatically repairable target is available")
             return report
@@ -449,6 +636,20 @@ def repair_file(
             "records_unchanged_except_context": verification.records_unchanged_except_context,
             "wrong_step_ids": verification.wrong_step_ids,
             "messages": verification.messages,
+            "duplicate_step_ids": (
+                report.file_assessment.prescan_counts.get(
+                    "DUPLICATE_STEP_IDS", 0
+                )
+                if report.file_assessment else "Not assessed"
+            ),
+            "replacement_references_exist": all(
+                item.proposed_context is not None
+                and item.proposed_context.step_id > 0
+                for item in selected
+            ),
+            "relationship_records_unchanged": (
+                "Proved by exact byte-range change audit"
+            ),
         }
         if not verification.passed:
             raise OutputError("Targeted output verification failed: " + "; ".join(
@@ -484,6 +685,8 @@ def repair_file(
             "changed_step_ids": change_audit.changed_step_ids,
             "unexpected_step_ids": change_audit.unexpected_step_ids,
             "messages": change_audit.messages,
+            "added_records": 0 if change_audit.passed else "Unknown",
+            "deleted_records": 0 if change_audit.passed else "Unknown",
         }
         if not change_audit.passed:
             raise OutputError("Unexpected output changes detected: " + "; ".join(
@@ -534,12 +737,33 @@ def repair_file(
         temporary = None
         report.temporary_path = None
         report.output = str(output)
-        report.repair_mode = "Targeted STEP attribute patch"
+        report.repair_mode = (
+            f"{config.repair_mode.title()} Repair - targeted STEP attribute patch"
+        )
         report.output_size = output.stat().st_size
         for item in selected:
             item.repaired = True
             item.status = Status.REPAIRED
             item.validation_result = "Targeted output verified"
+        repaired_by_type: dict[str, int] = {}
+        for item in selected:
+            if item.product_class:
+                repaired_by_type[item.product_class] = (
+                    repaired_by_type.get(item.product_class, 0) + 1
+                )
+        for product_type, counts in report.element_type_counts.items():
+            repaired_count = repaired_by_type.get(product_type, 0)
+            counts["successfully_repaired"] = repaired_count
+            counts["targeted_issues_remaining"] = max(
+                0, counts.get("affected_representations", 0) - repaired_count,
+            )
+        for classification, counts in report.classification_counts.items():
+            repaired_count = sum(
+                item.repaired and item.classification.value == classification
+                for item in report.diagnoses
+            )
+            counts["repaired"] = repaired_count
+            counts["remaining"] = max(0, counts.get("detected", 0) - repaired_count)
         report.summary_counts["SuccessfullyRepaired"] = len(selected)
         report.summary_counts["TargetedIssuesRemaining"] = (
             len(report.diagnoses) - len(selected)
@@ -548,7 +772,7 @@ def repair_file(
 
         report.system_diagnostics.update(system_snapshot(output.parent))
         if config.generate_report:
-            report_base = output.with_name(f"{source.stem}_repair_report")
+            report_base = output.with_name(f"{source.stem}_IFCSG_Repair_Report")
             try:
                 pdf_path = report_base.with_suffix(".pdf")
                 html_path = report_base.with_suffix(".html")

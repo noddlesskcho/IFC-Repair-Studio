@@ -60,6 +60,23 @@ def resolve_context(rep: Any, index: SemanticIndex) -> Resolution:
     if len(observed) > 1:
         conflicts.append("Equivalent representations use more than one context")
 
+    # Exact representation semantics are reusable across product classes. IFC
+    # representation contexts describe the geometry view (for example Body or
+    # FootPrint), not the owning product class. Same-file evidence is accepted
+    # only for an exact identifier/type/item signature and a project-rooted context.
+    semantic_signature = signature[1:]
+    semantic_observed = index.semantic_contexts.get(semantic_signature, {})
+    for cid, count in semantic_observed.items():
+        if cid in eligible:
+            scores[cid] += min(65, 40 + int(count) * 5)
+            reasons[cid].append(
+                f"{count} exact semantic peer representation(s) in this IFC use this context"
+            )
+    if len(semantic_observed) > 1:
+        conflicts.append(
+            "Exact semantic peer representations use more than one context"
+        )
+
     # Versioned semantic evidence learned from the supplied clean samples. This is
     # supporting evidence only: the candidate must still exist in this IFC and be
     # connected to its project context graph.
@@ -88,6 +105,9 @@ def resolve_context(rep: Any, index: SemanticIndex) -> Resolution:
         if identifier == "body" and (info.target_view or "").upper() == "MODEL_VIEW":
             scores[cid] += 10
             reasons[cid].append("MODEL_VIEW is compatible with a Body representation")
+        if identifier == "axis" and (info.target_view or "").upper() == "GRAPH_VIEW":
+            scores[cid] += 10
+            reasons[cid].append("GRAPH_VIEW is compatible with an Axis representation")
         scores[cid] += 5
         reasons[cid].append("Context is connected to the active IfcProject")
 
@@ -126,6 +146,8 @@ def resolve_context(rep: Any, index: SemanticIndex) -> Resolution:
         identifier == "body" and target_view and target_view != "MODEL_VIEW"
     ) or (
         identifier == "footprint" and target_view and target_view not in {"PLAN_VIEW", "MODEL_VIEW"}
+    ) or (
+        identifier == "axis" and target_view and target_view not in {"GRAPH_VIEW", "MODEL_VIEW"}
     )
     if identifier and context_identifier != identifier:
         return Resolution(
@@ -139,9 +161,9 @@ def resolve_context(rep: Any, index: SemanticIndex) -> Resolution:
             conflicts=[*conflicts, "Selected context target view is incompatible"],
             candidates=[eligible[cid] for cid in ranked], decision_trace=trace,
         )
-    strong_file_evidence = best_score >= 50
-    status = Status.SAFE if strong_file_evidence and not conflicts else Status.WARNING
     confidence = min(0.99, best_score / 120)
+    strong_file_evidence = best_score >= 50 and confidence >= 0.70
+    status = Status.SAFE if strong_file_evidence and not conflicts else Status.WARNING
     for item in trace:
         item["selected"] = item["context_step_id"] == best
         if item["selected"]:

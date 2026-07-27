@@ -1,0 +1,9 @@
+IFC+SG Repair Assistant includes or depends on:
+
+- IfcOpenShell, distributed under the LGPL-3.0-or-later license with an OpenCASCADE exception.
+- PySide6 / Qt for Python, distributed under applicable Qt licensing terms.
+- ReportLab, distributed under the BSD license.
+- Pillow, distributed under the HPND license.
+- psutil, distributed under the BSD-3-Clause license when diagnostic telemetry is packaged.
+
+Refer to each dependency distribution for its complete license text.

@@ -20,3 +20,39 @@ class DependencyError(RepairError):
 
 class CancelledError(RepairError):
     pass
+
+
+class UnsupportedSchemaError(InputError):
+    pass
+
+
+class ArchiveError(InputError):
+    pass
+
+
+class StepSyntaxError(ParseError):
+    pass
+
+
+class SemanticLoadError(ParseError):
+    pass
+
+
+class ResourceError(OutputError):
+    pass
+
+
+class RuleError(RepairError):
+    pass
+
+
+class PatchError(OutputError):
+    pass
+
+
+class VerificationError(OutputError):
+    pass
+
+
+class ReportError(OutputError):
+    pass

@@ -13,40 +13,85 @@ def diagnose_model(
     model: Any,
     include_valid: bool = False,
     *,
+    product_types: tuple[str, ...] = ("IfcSlab",),
+    allowed_signatures: dict[str, frozenset[tuple[str, str]]] | None = None,
     timings: dict[str, float] | None = None,
     progress: Callable[[str, int, int], None] | None = None,
     cancelled: Callable[[], bool] | None = None,
 ) -> tuple[list[Diagnosis], SemanticIndex]:
     mark = time.perf_counter()
-    slabs = list(model.by_type("IfcSlab"))
+    products: list[Any] = []
+    scope_by_product_id: dict[int, str] = {}
+    seen_products: set[int] = set()
+    for product_type in product_types:
+        for product in model.by_type(product_type):
+            pid = entity_id(product)
+            if not pid or pid in seen_products:
+                continue
+            products.append(product)
+            seen_products.add(pid)
+            scope_by_product_id[pid] = product_type
     if timings is not None:
-        timings["collect_target_slabs"] = time.perf_counter() - mark
+        timings["collect_target_elements"] = time.perf_counter() - mark
     if progress:
-        progress("collect_target_slabs", len(slabs), len(slabs))
+        progress("collect_target_elements", len(products), len(products))
     mark = time.perf_counter()
     representations: list[Any] = []
     seen: set[int] = set()
-    for position, slab in enumerate(slabs, 1):
+    representations_by_scope: dict[str, int] = {
+        product_type: 0 for product_type in product_types
+    }
+    for position, product in enumerate(products, 1):
         if cancelled and cancelled():
             from .errors import CancelledError
-            raise CancelledError("Scan cancelled while collecting slab representations")
-        owner = attr(slab, "Representation")
+            raise CancelledError("Scan cancelled while collecting element representations")
+        owner = attr(product, "Representation")
+        scope = scope_by_product_id.get(entity_id(product) or -1, "")
         for rep in attr(owner, "Representations", ()) or ():
             rid = entity_id(rep)
             if rid and rid not in seen and entity_type(rep) == "IfcShapeRepresentation":
                 representations.append(rep)
                 seen.add(rid)
-        if progress and (position % 100 == 0 or position == len(slabs)):
-            progress("collect_shape_representations", position, len(slabs))
+                representations_by_scope[scope] = representations_by_scope.get(scope, 0) + 1
+        if progress and (position % 100 == 0 or position == len(products)):
+            progress("collect_shape_representations", position, len(products))
     if timings is not None:
         timings["collect_shape_representations"] = time.perf_counter() - mark
     mark = time.perf_counter()
-    index = SemanticIndex.build(model, representations, products=slabs)
+    if progress:
+        progress("context_index", 0, 1)
+    index = SemanticIndex.build(model, representations, products=products)
+    index.product_scope.update(scope_by_product_id)
+    index.products_by_scope.update(scope_by_product_id.values())
+    index.representations_by_scope.update(representations_by_scope)
     if timings is not None:
         timings["context_index"] = time.perf_counter() - mark
+    if progress:
+        progress("context_index", 1, 1)
     mark = time.perf_counter()
     diagnoses: list[Diagnosis] = []
     resolution_cache: dict[tuple[str, str, str, str], Any] = {}
+    hosted_opening_ids: set[int] = set()
+    if "IfcOpeningElement" in product_types:
+        relationships = list(model.by_type("IfcRelVoidsElement"))
+        if progress:
+            progress("opening_relationships", 0, len(relationships))
+        for position, relationship in enumerate(relationships, 1):
+            if cancelled and cancelled():
+                from .errors import CancelledError
+                raise CancelledError(
+                    "Scan cancelled while checking opening relationships"
+                )
+            opening_id = entity_id(attr(relationship, "RelatedOpeningElement"))
+            if opening_id:
+                hosted_opening_ids.add(opening_id)
+            if progress and (
+                position % 100 == 0 or position == len(relationships)
+            ):
+                progress("opening_relationships", position, len(relationships))
+    if timings is not None:
+        timings["opening_relationships"] = time.perf_counter() - mark
+    mark = time.perf_counter()
     for position, rep in enumerate(representations, 1):
         if cancelled and cancelled():
             from .errors import CancelledError
@@ -54,9 +99,19 @@ def diagnose_model(
         context = attr(rep, "ContextOfItems")
         context_id = entity_id(context)
         invalid = context_id is None or context_id not in index.contexts
+        if progress and (position % 100 == 0 or position == len(representations)):
+            progress("context_resolution", position, len(representations))
         if not invalid and not include_valid:
             continue
         product = index.product_for(rep)
+        scope = scope_by_product_id.get(entity_id(product) or -1, "")
+        signature_pair = (
+            str(attr(rep, "RepresentationIdentifier", "") or "").casefold(),
+            str(attr(rep, "RepresentationType", "") or "").casefold(),
+        )
+        if invalid and allowed_signatures is not None:
+            if signature_pair not in allowed_signatures.get(scope, frozenset()):
+                continue
         owner = index.owner_for(rep)
         items = list(attr(rep, "Items", ()) or ())
         diagnosis = Diagnosis(
@@ -87,14 +142,20 @@ def diagnose_model(
             diagnosis.candidates = result.candidates
             if result.context:
                 diagnosis.proposed_context = index.context_info[entity_id(result.context)]
+            if scope == "IfcOpeningElement" and (
+                diagnosis.product_step_id not in hosted_opening_ids
+            ):
+                diagnosis.status = Status.NOT_REPAIRABLE
+                diagnosis.proposed_context = None
+                diagnosis.conflicts.append(
+                    "Opening is not connected to a host through IfcRelVoidsElement"
+                )
         else:
             diagnosis.status = Status.VALID
             diagnosis.confidence = 1.0
         diagnoses.append(diagnosis)
-        if progress and (position % 100 == 0 or position == len(representations)):
-            progress("context_resolution", position, len(representations))
     index.total_shape_representations = len(representations)
-    index.total_products = len(slabs)
+    index.total_products = len(products)
     if timings is not None:
         timings["context_resolution"] = time.perf_counter() - mark
     return diagnoses, index

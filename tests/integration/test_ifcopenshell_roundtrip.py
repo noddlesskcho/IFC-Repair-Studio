@@ -69,7 +69,11 @@ class IfcOpenShellRoundTripTests(unittest.TestCase):
             quick_report = analyse(path, validate=False, quick=True)
             self.assertIsNone(quick_report.snapshot_before)
             self.assertEqual(quick_report.validation_before, [])
-            self.assertEqual(quick_report.summary_counts["RepresentationsScanned"], 2)
+            self.assertEqual(quick_report.summary_counts["RepresentationsScanned"], 3)
+            self.assertEqual(quick_report.summary_counts["AffectedRepresentations"], 2)
+            self.assertEqual(
+                quick_report.element_type_counts["IfcWall"]["affected_representations"], 1
+            )
             diagnoses, _ = diagnose_model(opened)
             self.assertEqual(len(diagnoses), 1)
             self.assertEqual(diagnoses[0].proposed_context.step_id, sub.id())
@@ -86,7 +90,8 @@ class IfcOpenShellRoundTripTests(unittest.TestCase):
                 # Fast targeted verification avoids reopening the complete output.
                 self.assertEqual(mocked_open.call_count, 1)
             self.assertEqual(report.output, str(semantic_output.resolve()))
-            self.assertTrue(report.diagnoses[0].repaired)
+            self.assertEqual(len(report.diagnoses), 2)
+            self.assertTrue(all(item.repaired for item in report.diagnoses))
             self.assertTrue(report.targeted_verification["passed"])
             self.assertIn("apply_patches", report.durations)
             self.assertIn("flush_output", report.durations)
@@ -102,8 +107,9 @@ class IfcOpenShellRoundTripTests(unittest.TestCase):
             self.assertTrue(Path(debug_report.log_path).is_file())
             self.assertEqual(open_model(semantic_output).by_id(invalid.id()).ContextOfItems.id(),
                              sub.id())
-            self.assertIsNone(
-                open_model(semantic_output).by_id(wall_invalid.id()).ContextOfItems
+            self.assertEqual(
+                open_model(semantic_output).by_id(wall_invalid.id()).ContextOfItems.id(),
+                sub.id(),
             )
             replace_source = Path(folder) / "replace_in_place.ifc"
             replace_source.write_bytes(path.read_bytes())
@@ -117,6 +123,10 @@ class IfcOpenShellRoundTripTests(unittest.TestCase):
             self.assertEqual(backup.read_bytes(), original_bytes)
             self.assertEqual(open_model(replace_source).by_id(invalid.id()).ContextOfItems.id(),
                              sub.id())
+            self.assertEqual(
+                open_model(replace_source).by_id(wall_invalid.id()).ContextOfItems.id(),
+                sub.id(),
+            )
 
 
 if __name__ == "__main__":

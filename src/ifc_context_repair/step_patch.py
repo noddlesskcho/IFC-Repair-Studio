@@ -171,7 +171,7 @@ def build_patch_plan(
                 replacement=f"#{int(replacements[step_id])}".encode("ascii"),
             ))
             found.add(step_id)
-            if progress:
+            if progress and (len(found) % 100 == 0 or len(found) == total):
                 progress(len(found), total)
 
     missing = sorted(set(replacements) - found)
@@ -179,7 +179,7 @@ def build_patch_plan(
         preview = ", ".join(f"#{value}" for value in missing[:8])
         suffix = "..." if len(missing) > 8 else ""
         raise OutputError(
-            f"Could not locate {len(missing)} confirmed slab representation(s): "
+            f"Could not locate {len(missing)} confirmed representation target(s): "
             f"{preview}{suffix}"
         )
     edits.sort(key=lambda edit: edit.token_start)
@@ -225,10 +225,21 @@ def apply_patch_plan(
     record_positions: dict[int, tuple[int, int]] = {}
     source_done = 0
     patches_done = 0
+    last_reported_bytes = 0
+    last_reported_patches = 0
 
-    def report_progress() -> None:
-        if progress:
-            progress(source_done, plan.fingerprint.size, patches_done, len(plan.edits))
+    def report_progress(force: bool = False) -> None:
+        nonlocal last_reported_bytes, last_reported_patches
+        if not progress:
+            return
+        if not force and (
+            source_done - last_reported_bytes < _COPY_CHUNK
+            and patches_done - last_reported_patches < 100
+        ):
+            return
+        progress(source_done, plan.fingerprint.size, patches_done, len(plan.edits))
+        last_reported_bytes = source_done
+        last_reported_patches = patches_done
 
     with plan.source.open("rb") as source_stream, mmap.mmap(
         source_stream.fileno(), length=0, access=mmap.ACCESS_READ
@@ -277,6 +288,8 @@ def apply_patch_plan(
             cursor = end
             source_done = cursor
             report_progress()
+
+        report_progress(force=True)
 
         write_finished = time.perf_counter()
         destination.flush()

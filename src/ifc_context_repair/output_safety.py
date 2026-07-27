@@ -6,7 +6,7 @@ import time
 import uuid
 from pathlib import Path
 
-from .errors import OutputError
+from .errors import OutputError, ResourceError
 
 
 def cleanup_abandoned_temps(
@@ -65,7 +65,7 @@ def preflight_output(
     required = int(source_size * multiplier) + max(0, safety_margin_mb) * 1024 * 1024
     free = shutil.disk_usage(directory).free
     if free < required:
-        raise OutputError(
+        raise ResourceError(
             f"Insufficient free space. {required:,} bytes required; {free:,} bytes available."
         )
     return {

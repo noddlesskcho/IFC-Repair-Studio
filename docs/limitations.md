@@ -1,7 +1,8 @@
 # Known limitations and risks
 
-- No clean/faulty customer IFC fixtures were available, so Revit 2025 IFC+SG patterns
-  and linked-slab equivalence have not been empirically confirmed.
+- The slab policy has the broadest supplied clean/faulty fixture coverage. Wall,
+  railing, covering, and opening policies require additional clean/faulty exports
+  from different authoring tools before they should be treated as universal.
 - IfcOpenShell must parse the semantic model in memory; files above 1 GB need real
   profiling on the target workstation.
 - Native parse and write calls are not safely cancellable mid-call.

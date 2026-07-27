@@ -7,12 +7,7 @@ if ($Clean) {
     }
 }
 & $Python -m pip install --upgrade pip
-& $Python -m pip install -e ".[ui,test,build]"
+& $Python -m pip install -e ".[ui,test,build,diagnostics]"
 & $Python -m pytest
-& $Python -m PyInstaller --noconfirm --clean --windowed --name IFCRepairStudio `
-    --icon assets\ifc_repair_studio.ico `
-    --add-data "assets\ifc_repair_studio.ico;assets" `
-    --collect-binaries ifcopenshell --collect-data ifcopenshell `
-    --hidden-import ifcopenshell.validate --hidden-import ifcopenshell.geom `
-    scripts\gui_entry.py
-Write-Host "Build created under dist\IFCContextRepair. Test it on a clean Windows VM before release."
+& $Python -m PyInstaller --noconfirm --clean packaging\IFCSGRepairAssistant-1.0.0.spec
+Write-Host "Build created under dist\IFCSGRepairAssistant-1.0.0."

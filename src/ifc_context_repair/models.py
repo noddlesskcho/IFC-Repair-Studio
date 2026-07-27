@@ -15,6 +15,90 @@ class Status(str, Enum):
     REPAIRED = "Repaired"
 
 
+class RepresentationClassification(str, Enum):
+    DIRECT_PRODUCT = "DIRECT_PRODUCT"
+    SHAPE_ASPECT_PRODUCT = "SHAPE_ASPECT_PRODUCT"
+    SHAPE_ASPECT_REPRESENTATION_MAP = "SHAPE_ASPECT_REPRESENTATION_MAP"
+    REPRESENTATION_MAP = "REPRESENTATION_MAP"
+    ORPHANED = "ORPHANED"
+    AMBIGUOUS = "AMBIGUOUS"
+    UNSUPPORTED = "UNSUPPORTED"
+
+
+class ConfidenceLevel(str, Enum):
+    HIGH = "HIGH"
+    MEDIUM = "MEDIUM"
+    LOW = "LOW"
+    AMBIGUOUS = "AMBIGUOUS"
+
+
+class IfcSgClassification(str, Enum):
+    LIKELY = "Likely IFC+SG"
+    POSSIBLE = "Possibly IFC+SG"
+    NOT_IDENTIFIABLE = "Not identifiable as IFC+SG"
+    UNSUPPORTED = "Unsupported"
+
+
+class ProcessingStrategy(str, Enum):
+    FULL_SEMANTIC = "FULL_SEMANTIC"
+    HYBRID = "HYBRID"
+    STREAMING_FIRST = "STREAMING_FIRST"
+    LIMITED_AUDIT = "LIMITED_AUDIT"
+
+
+class RuleMaturity(str, Enum):
+    EXPERIMENTAL = "EXPERIMENTAL"
+    BETA = "BETA"
+    PRODUCTION = "PRODUCTION"
+
+
+@dataclass(slots=True)
+class AuditFinding:
+    rule_id: str
+    category: str
+    title: str
+    entity_step_id: int | None
+    entity_type: str | None
+    global_id: str | None = None
+    name: str | None = None
+    detail: str = ""
+    evidence: list[str] = field(default_factory=list)
+    confidence: str = "REPORT_ONLY"
+    action: str = "Report only"
+    schema_validity: str = "Not assessed"
+    rendering_impact: str = "Not assessed"
+    downstream_impact: str = "Not assessed"
+    submission_risk: str = "Not assessed"
+    repair_priority: str = "Not assessed"
+    data: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class IfcSgAssessment:
+    classification: IfcSgClassification
+    evidence: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    likely_exporter: str = "Unknown"
+    exporter_evidence: list[str] = field(default_factory=list)
+    score: int = 0
+
+
+@dataclass(slots=True)
+class FileAssessment:
+    original_name: str
+    working_name: str
+    input_kind: str
+    schema: str | None
+    size_bytes: int
+    size_category: str
+    strategy: ProcessingStrategy
+    available_memory_bytes: int | None = None
+    available_disk_bytes: int | None = None
+    estimated_output_bytes: int | None = None
+    ifc_sg: IfcSgAssessment | None = None
+    prescan_counts: dict[str, int] = field(default_factory=dict)
+
+
 @dataclass(slots=True)
 class PrescanCandidate:
     step_id: int | None
@@ -59,6 +143,18 @@ class Diagnosis:
     decision_trace: list[dict[str, Any]] = field(default_factory=list)
     validation_result: str = "Not run"
     repaired: bool = False
+    classification: RepresentationClassification = (
+        RepresentationClassification.DIRECT_PRODUCT
+    )
+    confidence_level: ConfidenceLevel = ConfidenceLevel.LOW
+    usage_count: int = 0
+    ultimate_product_count: int = 0
+    ultimate_product_classes: dict[str, int] = field(default_factory=dict)
+    schema_status: str = "Invalid - ContextOfItems is missing"
+    rendering_risk: str = "Unknown"
+    downstream_processing_risk: str = "Unknown"
+    repair_priority: str = "Unknown"
+    proposed_action: str = "Report only"
 
     def to_dict(self) -> dict[str, Any]:
         value = asdict(self)
@@ -94,6 +190,8 @@ class RunReport:
     finished_at: str = ""
     durations: dict[str, float] = field(default_factory=dict)
     summary_counts: dict[str, int] = field(default_factory=dict)
+    element_type_counts: dict[str, dict[str, int]] = field(default_factory=dict)
+    classification_counts: dict[str, dict[str, int]] = field(default_factory=dict)
     active_rule_id: str = ""
     active_rule_version: str = ""
     input_size: int = 0
@@ -123,6 +221,16 @@ class RunReport:
     environment: dict[str, str] = field(default_factory=dict)
     errors: list[str] = field(default_factory=list)
     total_duration_seconds: float = 0.0
+    file_assessment: FileAssessment | None = None
+    audit_findings: list[AuditFinding] = field(default_factory=list)
+    selected_rules: list[str] = field(default_factory=list)
+    skipped_rules: dict[str, str] = field(default_factory=dict)
+    rule_metadata: list[dict[str, Any]] = field(default_factory=list)
+    disclaimer: str = (
+        "This application performs targeted repairs for known IFC+SG export issues. "
+        "It is not a complete IFC validator or CORENET X compliance checker. "
+        "A repaired IFC should still undergo the normal submission validation process."
+    )
 
     def to_dict(self) -> dict[str, Any]:
         def convert(value: Any) -> Any:
