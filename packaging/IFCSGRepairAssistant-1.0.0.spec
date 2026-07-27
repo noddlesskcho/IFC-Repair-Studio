@@ -1,10 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""Audited windowed build for IFC Repair Studio 0.4.2.
-
-The dependency list is deliberately narrow. PyInstaller's standard hooks discover
-PySide6 and ReportLab; only IfcOpenShell's native/data payload needs explicit handling.
-psutil is included only when the diagnostics extra is installed in the build venv.
-"""
+"""Production windowed build for IFC+SG Repair Assistant 1.0.0."""
 from importlib.util import find_spec
 from pathlib import Path
 
@@ -13,8 +8,14 @@ from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs
 
 ROOT = Path(SPECPATH).parent
 ICON = ROOT / "assets" / "ifc_repair_studio.ico"
+VERSION = ROOT / "packaging" / "version_info.txt"
 
-datas = [(str(ICON), "assets")]
+datas = [
+    (str(ICON), "assets"),
+    (str(ROOT / "assets" / "THIRD_PARTY_NOTICES.txt"), "assets"),
+    (str(ROOT / "assets" / "rules_ifc_sg.json"), "assets"),
+    (str(ROOT / "LICENSE"), "."),
+]
 binaries = []
 hiddenimports = ["ifcopenshell.validate"]
 
@@ -49,7 +50,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="IFCRepairStudio-0.4.2",
+    name="IFCSGRepairAssistant-1.0.0",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -57,6 +58,7 @@ exe = EXE(
     console=False,
     disable_windowed_traceback=False,
     icon=str(ICON),
+    version=str(VERSION),
 )
 coll = COLLECT(
     exe,
@@ -65,5 +67,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name="IFCRepairStudio-0.4.2",
+    name="IFCSGRepairAssistant-1.0.0",
 )

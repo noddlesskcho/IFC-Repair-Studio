@@ -14,18 +14,22 @@ class LargeSampleCountingTests(unittest.TestCase):
         path = Path(configured)
         self.assertTrue(path.is_file())
         report = analyse(path, validate=False, quick=True)
-        counts = report.summary_counts
-        self.assertEqual(counts["ElementsScanned"], 2552)
-        self.assertEqual(counts["ElementsAffected"], 2051)
-        self.assertEqual(counts["RepresentationsScanned"], 4851)
-        self.assertEqual(counts["AffectedRepresentations"], 3151)
+        counts = report.element_type_counts["IfcSlab"]
+        self.assertEqual(counts["elements_scanned"], 2552)
+        self.assertEqual(counts["elements_affected"], 2051)
+        self.assertEqual(counts["representations_scanned"], 4851)
+        self.assertEqual(counts["affected_representations"], 3151)
         breakdown = Counter(
             (item.representation_identifier, item.representation_type)
-            for item in report.diagnoses
+            for item in report.diagnoses if item.product_class == "IfcSlab"
         )
         self.assertEqual(breakdown[("Body", "SweptSolid")], 1100)
         self.assertEqual(breakdown[("FootPrint", "Curve2D")], 2051)
-        self.assertEqual({item.product_class for item in report.diagnoses}, {"IfcSlab"})
+        self.assertEqual(
+            {item.product_class for item in report.diagnoses if item.rule_id ==
+             "SLAB_MISSING_SHAPE_CONTEXT_V1"},
+            {"IfcSlab"},
+        )
 
 
 if __name__ == "__main__":

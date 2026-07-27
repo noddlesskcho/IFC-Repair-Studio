@@ -1,0 +1,14 @@
+{
+  "workflow": "IFC+SG / CORENET X",
+  "application_version": "1.0.0",
+  "rules": [
+    {"rule_id": "DIRECT_PRODUCT_MISSING_CONTEXT_V2", "maturity": "PRODUCTION", "mode": "SAFE"},
+    {"rule_id": "SHAPE_ASPECT_PRODUCT_MISSING_CONTEXT_V1", "maturity": "PRODUCTION", "mode": "ADVANCED"},
+    {"rule_id": "SHAPE_ASPECT_MAP_MISSING_CONTEXT_V1", "maturity": "PRODUCTION", "mode": "ADVANCED"},
+    {"rule_id": "REPRESENTATION_MAP_MISSING_CONTEXT_V1", "maturity": "PRODUCTION", "mode": "ADVANCED"},
+    {"rule_id": "REPRESENTATION_MAP_FOOTPRINT_MISSING_CONTEXT_V1", "maturity": "PRODUCTION", "mode": "ADVANCED"},
+    {"rule_id": "IFCSPACE_BODY_AUDIT_V1", "maturity": "BETA", "mode": "AUDIT_ONLY"},
+    {"rule_id": "BASE_QUANTITY_AUDIT_V1", "maturity": "BETA", "mode": "AUDIT_ONLY"},
+    {"rule_id": "IFCSG_GEOREFERENCING_AUDIT_V1", "maturity": "BETA", "mode": "AUDIT_ONLY"}
+  ]
+}

@@ -17,6 +17,7 @@ output/
 outputs/
 tmp/
 work/
+validation-output/
 
 # Packaging artifacts
 build/

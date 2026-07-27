@@ -47,6 +47,9 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("input", type=Path)
     parser.add_argument("--reports", action="store_true")
+    parser.add_argument(
+        "--mode", choices=("safe", "advanced"), default="safe"
+    )
     parser.add_argument("--result", type=Path)
     args = parser.parse_args()
     samples: list[tuple[int, int, int]] = []
@@ -66,6 +69,7 @@ def main() -> int:
             "source": args.input,
             "output": output,
             "generate_report": args.reports,
+            "repair_mode": args.mode,
         }
         if "minimum_confidence" in {item.name for item in dataclasses.fields(RepairConfig)}:
             config_values["minimum_confidence"] = 0.70

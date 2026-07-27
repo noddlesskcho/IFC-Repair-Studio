@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ifc-context-repair"
-version = "0.4.2"
-description = "IFC Repair Studio: auditable repair of missing IfcShapeRepresentation contexts"
+version = "1.0.0"
+description = "IFC+SG Repair Assistant for known Autodesk Revit 2025/2026 geometry-reference issues before CORENET X submission"
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
 license = {text = "MIT"}

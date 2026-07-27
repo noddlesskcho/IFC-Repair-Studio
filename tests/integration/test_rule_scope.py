@@ -7,8 +7,8 @@ from ifc_context_repair.rules import ACTIVE_RULE
 
 
 @unittest.skipUnless(importlib.util.find_spec("ifcopenshell"), "IfcOpenShell not installed")
-class SlabRuleScopeTests(unittest.TestCase):
-    def test_non_slab_ownership_paths_are_ignored(self):
+class ProductRuleScopeTests(unittest.TestCase):
+    def test_all_missing_contexts_are_classified_and_safe_mode_is_conservative(self):
         import ifcopenshell
 
         model = ifcopenshell.file(schema="IFC4")
@@ -42,7 +42,9 @@ class SlabRuleScopeTests(unittest.TestCase):
             "IfcSlab", GlobalId=ifcopenshell.guid.new(), Representation=slab_shape
         )
 
-        ignored_reps = []
+        supported_reps = []
+        host_wall = None
+        hosted_opening = None
         for entity_type in ("IfcWall", "IfcOpeningElement", "IfcRailing", "IfcCovering"):
             rep = model.create_entity(
                 "IfcShapeRepresentation", ContextOfItems=sub,
@@ -51,10 +53,43 @@ class SlabRuleScopeTests(unittest.TestCase):
             shape = model.create_entity(
                 "IfcProductDefinitionShape", Representations=[rep]
             )
-            model.create_entity(
+            product = model.create_entity(
                 entity_type, GlobalId=ifcopenshell.guid.new(), Representation=shape
             )
-            ignored_reps.append(rep.id())
+            if entity_type == "IfcWall":
+                host_wall = product
+            elif entity_type == "IfcOpeningElement":
+                hosted_opening = product
+            supported_reps.append(rep.id())
+        model.create_entity(
+            "IfcRelVoidsElement", GlobalId=ifcopenshell.guid.new(),
+            RelatingBuildingElement=host_wall, RelatedOpeningElement=hosted_opening,
+        )
+        orphan_rep = model.create_entity(
+            "IfcShapeRepresentation", ContextOfItems=sub,
+            RepresentationIdentifier="Body", RepresentationType="SweptSolid",
+            Items=[item],
+        )
+        orphan_shape = model.create_entity(
+            "IfcProductDefinitionShape", Representations=[orphan_rep]
+        )
+        model.create_entity(
+            "IfcOpeningElement", GlobalId=ifcopenshell.guid.new(),
+            Representation=orphan_shape,
+        )
+
+        unsupported_rep = model.create_entity(
+            "IfcShapeRepresentation", ContextOfItems=sub,
+            RepresentationIdentifier="Clearance", RepresentationType="BoundingBox",
+            Items=[item],
+        )
+        unsupported_shape = model.create_entity(
+            "IfcProductDefinitionShape", Representations=[unsupported_rep]
+        )
+        model.create_entity(
+            "IfcWall", GlobalId=ifcopenshell.guid.new(),
+            Representation=unsupported_shape,
+        )
 
         aspect_rep = model.create_entity(
             "IfcShapeRepresentation", ContextOfItems=sub,
@@ -72,7 +107,10 @@ class SlabRuleScopeTests(unittest.TestCase):
             "IfcRepresentationMap", MappingOrigin=axis, MappedRepresentation=mapped_rep
         )
 
-        malformed_ids = [*ignored_reps, aspect_rep.id(), mapped_rep.id()]
+        malformed_ids = [
+            *supported_reps, orphan_rep.id(), unsupported_rep.id(),
+            aspect_rep.id(), mapped_rep.id(),
+        ]
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "scope.ifc"
             model.write(str(path))
@@ -85,13 +123,35 @@ class SlabRuleScopeTests(unittest.TestCase):
             path.write_bytes(data)
             model = ifcopenshell.open(str(path))
             result = ACTIVE_RULE.detect(model)
-        self.assertEqual(result.diagnoses, [])
-        self.assertEqual(result.elements_scanned, 1)
-        self.assertEqual(result.representations_scanned, 1)
+        self.assertEqual(
+            {item.representation_step_id for item in result.diagnoses},
+            set(malformed_ids),
+        )
+        self.assertEqual(result.elements_scanned, 7)
+        self.assertEqual(result.representations_scanned, 9)
         target_ids = {item.representation_step_id for item in result.targets}
-        self.assertTrue(target_ids.isdisjoint(ignored_reps))
-        self.assertNotIn(aspect_rep.id(), target_ids)
-        self.assertNotIn(mapped_rep.id(), target_ids)
+        self.assertEqual(target_ids, set(malformed_ids))
+        orphan_target = next(
+            item for item in result.targets
+            if item.representation_step_id == orphan_rep.id()
+        )
+        self.assertFalse(orphan_target.automatically_repairable)
+        diagnoses = {
+            item.representation_step_id: item for item in result.diagnoses
+        }
+        self.assertEqual(
+            diagnoses[unsupported_rep.id()].classification.value, "UNSUPPORTED"
+        )
+        self.assertEqual(
+            diagnoses[aspect_rep.id()].classification.value, "ORPHANED"
+        )
+        self.assertEqual(
+            diagnoses[mapped_rep.id()].classification.value, "REPRESENTATION_MAP"
+        )
+        self.assertFalse(next(
+            target.automatically_repairable for target in result.targets
+            if target.representation_step_id == mapped_rep.id()
+        ))
 
 
 if __name__ == "__main__":

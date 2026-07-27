@@ -1,3 +1,81 @@
+# IFC+SG Repair Assistant 1.0.0
+
+The production application is repositioned specifically for Autodesk Revit 2025
+and Revit 2026 IFC+SG exports before CORENET X submission.
+
+The modeller interface now uses a three-step workflow—Select IFC, Review Results,
+Repair IFC—and only two modes: Audit Only and Repair IFC. Engineering
+classifications, STEP identifiers, confidence evidence, relationship terminology,
+processing strategy, and raw entity statistics have moved to the Detailed Report.
+
+The final maintenance build separates the no-file and ready-to-review workflow
+states. After selecting an IFC, the interface now advances to Review Results and
+shows a visible **Review IFC** primary action.
+
+Automatic repair is disabled for unsupported schemas, non-Revit exporters, and
+files where Revit 2025 or 2026 cannot be identified. The repair algorithms,
+streaming STEP writer, mandatory verification, and original-file protections are
+unchanged.
+
+---
+
+# IFC Repair Studio 0.6.0
+
+Version 0.6.0 adds a reusable representation-ownership index and classifies every
+missing `IfcShapeRepresentation.ContextOfItems` as Direct Product, Shape Aspect under
+a product, Shape Aspect under a representation map, Representation Map, Orphaned,
+Ambiguous, or Unsupported. Safe Repair remains the default. Extended Repair changes
+only HIGH-confidence indirect cases; Audit Only writes reports without changing an IFC.
+
+The repaired 652.9 MB sample contains exactly 20,378 remaining missing contexts:
+7,084 shape-aspect product representations, 13,278 shape-aspect map representations,
+and 16 reusable FootPrint representation maps. The first 20,362 have unique
+high-confidence contexts. The 16 map cases remain report-only because map usage does
+not prove a compatible FootPrint context.
+
+The UI now displays a visible animated progress bar during native parsing and real
+determinate progress during indexing, classification, patch planning, byte streaming,
+verification, and report generation. HTML report outcome alignment is corrected and
+the report now includes classification, direct-product, shape-aspect, representation
+map, ambiguous-case, verification, and diagnostics navigation.
+
+---
+
+# IFC Repair Studio 0.5.1
+
+Version 0.5.1 fixes a packaged-Windows first-scan hang that could also open a second
+application window. The PyInstaller entry point now calls
+`multiprocessing.freeze_support()` before application startup, and a Windows named
+mutex prevents accidental duplicate GUI instances. Scan telemetry now exposes context
+index construction and opening-host relationship checks instead of leaving the last
+collection count on screen.
+
+The exact 652.9 MB `Sample Project.ifc` completes the source Qt worker workflow in
+approximately 50 seconds and reports 8,926 safe representation repairs. The repair
+rules and output transaction are unchanged from v0.5.0.
+
+---
+
+# IFC Repair Studio 0.5.0
+
+Version 0.5.0 expands the proven slab repair into separately constrained policies for
+`IfcWall`, `IfcOpeningElement`, `IfcRailing`, and `IfcCovering`. The UI still exposes
+one **Repair All Safe Issues** action, while every representation is resolved and
+verified independently and all accepted edits share one atomic STEP stream write.
+
+Same-file exact representation semantics provide cross-product context evidence.
+Ambiguous or identifier-only decisions remain excluded, indirect representation maps
+and shape aspects remain out of scope, and openings must participate in
+`IfcRelVoidsElement`. Scan results, PDF, HTML, and diagnostics now include per-element
+counts.
+
+On the retained 652.9 MB slab-repaired sample, v0.5.0 identifies 5,738 safe opening
+Body repairs and 37 safe covering FootPrint repairs. The sample's slabs, walls, and
+railings are already valid. The original v0.4.2 slab counts remain available as a
+per-policy regression baseline.
+
+---
+
 # IFC Repair Studio 0.4.2
 
 Version 0.4.2 hardens the large-IFC repair pipeline. Production output is now proven to
@@ -101,3 +179,53 @@ interface based on the approved reference design. Large-file work removes the du
 source parse during repair, caches the shape-representation query, makes the initial UI
 scan skip full validation, hashing, and semantic snapshots, and adds cancellation between
 native processing stages. Full before/after validation still runs during repair.
+# IFC Repair Studio 0.7.0 development foundation
+
+Production IFC+SG / CORENET X pre-submission release.
+
+## Product and workflow
+
+- Positions the application as a specialised IFC+SG technical audit and repair
+  tool, not a universal validator or compliance guarantee.
+- Supports `.ifc`, `.ifczip`, and `.zip` containing exactly one IFC.
+- Restricts automatic repairs to IFC4.
+- Adds the internal audit and repair capabilities later presented through the
+  simplified Audit Only and Repair IFC interface.
+- Removes source-file replacement from the production UI and CLI.
+
+## Rule engine
+
+- Adds the registry-based `rules/ifc_sg` architecture and versioned metadata.
+- Production rules:
+  - `DIRECT_PRODUCT_MISSING_CONTEXT_V2`
+  - `SHAPE_ASPECT_PRODUCT_MISSING_CONTEXT_V1`
+  - `REPRESENTATION_MAP_MISSING_CONTEXT_V1`
+  - `REPRESENTATION_MAP_FOOTPRINT_MISSING_CONTEXT_V1`
+- Beta report-only rules:
+  - `IFCSPACE_BODY_AUDIT_V1`
+  - `BASE_QUANTITY_AUDIT_V1`
+  - `IFCSG_GEOREFERENCING_AUDIT_V1`
+- Adds type-product ownership, `IfcRelDefinesByType` occurrence and sibling-map
+  hierarchy evidence.
+- General production logic resolves the final 16 type-owned FootPrint cases
+  without hard-coded STEP IDs.
+
+## Assessment, performance and safety
+
+- Adds IFC+SG likelihood and exporter evidence.
+- Adds file-size categories and `FULL_SEMANTIC`, `HYBRID`,
+  `STREAMING_FIRST`, and `LIMITED_AUDIT` strategies.
+- Adds duplicate STEP-ID pre-scan and explicit added/deleted-record reporting.
+- Optimizes the 622.7 MB pre-scan from 40.17 to 9.50 seconds.
+- Full large-model transaction: 82.90 seconds, 16/16 verified, zero unexpected
+  records.
+- Patch layer verified at 50 MB, 500 MB and 1 GB.
+
+## UI, reports and packaging
+
+- Adds IFC+SG file assessment and audit-result categories to the desktop UI.
+- Updates PDF/HTML wording, shareable-path privacy and regulatory disclaimer.
+- Adds Windows version metadata, notices and bundled rule metadata.
+- Adds synthetic IFC4 fixture factory, expanded tests and production documents.
+
+---

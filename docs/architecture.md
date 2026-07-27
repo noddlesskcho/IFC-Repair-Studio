@@ -2,9 +2,9 @@
 
 **Status:** Accepted, 17 July 2026
 
-## v0.4 module boundaries
+## v0.5 module boundaries
 
-- `rules.py`: versioned repair-rule contract, `RepairTarget`, and the enabled slab rule;
+- `rules.py`: versioned repair-rule contract, `RepairTarget`, and element policies;
 - `repair.py`: stage-instrumented orchestration and file-safety transaction;
 - `context_index.py`, `detector.py`, `resolver.py`: schema-aware collection and proposal;
 - `step_patch.py`: byte-preserving, manifest-producing targeted persistence;
@@ -17,17 +17,21 @@
 - `ui/main_window.py`: workflow state rendering;
 - `app.py`, `resources.py`: Windows identity and packaged-resource integration.
 
-Only `SLAB_MISSING_SHAPE_CONTEXT_V1` is enabled. Adding an entity class requires a new
-rule with explicit ownership, signature, candidate-context, confidence, and verification
-constraints; a missing `$` alone is never sufficient.
+`PRODUCT_MISSING_SHAPE_CONTEXT_V2` combines separately qualified policies for
+`IfcSlab`, `IfcWall`, `IfcOpeningElement`, `IfcRailing`, and `IfcCovering`. Adding an
+entity class still requires explicit ownership, signature, candidate-context,
+confidence, and verification constraints; a missing `$` alone is never sufficient.
+Openings additionally require an `IfcRelVoidsElement` host relationship.
 
 ## Decision
 
 Use Python 3.11/3.12, IfcOpenShell 0.8.x, PySide6, and PyInstaller. The core is a
 UI-independent package. A streaming byte-state-machine prescan finds candidates;
-IfcOpenShell then performs authoritative semantic inspection, attribute assignment,
-write, reopen, and validation. A confirmed-ID STEP patcher is available as an
-explicit formatting-preserving mode.
+IfcOpenShell performs authoritative semantic inspection and context resolution. The
+production writer then creates one ordered variable-length STEP patch plan, streams
+the source into a same-directory temporary file, verifies exact target records and
+unexpected changes, and atomically installs the verified output. Full IfcOpenShell
+schema validation remains optional.
 
 IfcOpenShell 0.8.5 documentation confirms Windows wheels for Python 3.11–3.14,
 model open/write and entity attribute assignment, JSON validation, and optional
