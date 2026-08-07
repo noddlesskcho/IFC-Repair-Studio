@@ -30,7 +30,8 @@ def diagnose_model(
                 continue
             products.append(product)
             seen_products.add(pid)
-            scope_by_product_id[pid] = product_type
+            # Keep the concrete class even when collecting through IfcProduct.
+            scope_by_product_id[pid] = entity_type(product) or product_type
     if timings is not None:
         timings["collect_target_elements"] = time.perf_counter() - mark
     if progress:
@@ -72,7 +73,7 @@ def diagnose_model(
     diagnoses: list[Diagnosis] = []
     resolution_cache: dict[tuple[str, str, str, str], Any] = {}
     hosted_opening_ids: set[int] = set()
-    if "IfcOpeningElement" in product_types:
+    if "IfcOpeningElement" in scope_by_product_id.values():
         relationships = list(model.by_type("IfcRelVoidsElement"))
         if progress:
             progress("opening_relationships", 0, len(relationships))
@@ -110,7 +111,10 @@ def diagnose_model(
             str(attr(rep, "RepresentationType", "") or "").casefold(),
         )
         if invalid and allowed_signatures is not None:
-            if signature_pair not in allowed_signatures.get(scope, frozenset()):
+            allowed = allowed_signatures.get(
+                scope, allowed_signatures.get("*", frozenset())
+            )
+            if signature_pair not in allowed:
                 continue
         owner = index.owner_for(rep)
         items = list(attr(rep, "Items", ()) or ())

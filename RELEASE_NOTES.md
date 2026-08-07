@@ -1,3 +1,39 @@
+# IFC+SG Repair Assistant 1.0.0 - Focused Version 1 build
+
+## Direct-product-only production scope
+
+- Version 1 enables only direct product representation repairs.
+- Body / SweptSolid, Body / Tessellation and FootPrint / Curve2D are supported
+  when one unique compatible project context is proven.
+- ShapeAspect and RepresentationMap implementations and tests are retained but
+  disabled before detection and index construction.
+- The modeller UI now exposes only Audit Only and Repair IFC.
+- Ordinary repair counts and reports exclude disabled indirect categories.
+- Developer diagnostics identify them as `Skipped because rule disabled`.
+- The original IFC is preserved; repaired output is installed only after target,
+  semantic-reopen and unexpected-change verification pass.
+- Geometry Repair Records now use seven user-focused columns, Element and
+  Representation filters, synchronized top/bottom horizontal scrollbars,
+  visible ascending/descending sort arrows and a seven-field CSV export.
+- The desktop title and report header display v1.0.0. The subtitle now explains
+  that the targeted defect is a missing `IfcShapeRepresentation` context
+  reference and an IFC4 schema non-compliance that may hide elements during
+  CORENET X model processing.
+
+## Regression evidence
+
+- Sample direct-product targets and repairs: 8,926.
+- IfcSlab: 3,151; IfcOpeningElement: 5,738; IfcCovering: 37.
+- Supported issues remaining: 0.
+- Expected and actual changed STEP records: 8,926.
+- Unexpected changed records: 0.
+- Automated checks: 79 passed; 3 optional real-file golden tests skipped.
+- Optimised 623 MB scan: 62.720 s median across three measured runs.
+- Broad indirect warm-up exceeded seven minutes and was stopped; no fabricated
+  percentage comparison is claimed.
+
+---
+
 # IFC+SG Repair Assistant 1.0.0
 
 The production application is repositioned specifically for Autodesk Revit 2025

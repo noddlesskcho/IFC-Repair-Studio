@@ -1,11 +1,6 @@
-import multiprocessing
 import json
 import sys
 from pathlib import Path
-
-from ifc_context_repair.app import main
-from ifc_context_repair.config import RepairConfig
-from ifc_context_repair.repair import repair_file
 
 
 def _run_packaged_self_test(arguments: list[str]) -> int:
@@ -20,9 +15,15 @@ def _run_packaged_self_test(arguments: list[str]) -> int:
     source = Path(arguments[0]).resolve()
     output = Path(arguments[1]).resolve()
     mode = arguments[2].lower() if len(arguments) == 3 else "safe"
-    if mode not in {"safe", "advanced", "audit"}:
+    if mode not in {"safe", "audit"}:
         return 64
+    output.parent.mkdir(parents=True, exist_ok=True)
     try:
+        # Keep the frozen entry point lightweight and import the repair stack
+        # only after the diagnostic arguments have been validated.
+        from ifc_context_repair.config import RepairConfig
+        from ifc_context_repair.repair import repair_file
+
         report = repair_file(
             RepairConfig(
                 source=source,
@@ -52,11 +53,9 @@ def _run_packaged_self_test(arguments: list[str]) -> int:
 
 
 if __name__ == "__main__":
-    # Required for PyInstaller on Windows. Without this guard, a library-created
-    # multiprocessing helper can re-enter this file, launch a second GUI, and leave
-    # the original worker waiting indefinitely.
-    multiprocessing.freeze_support()
     if "--self-test" in sys.argv:
         index = sys.argv.index("--self-test")
         raise SystemExit(_run_packaged_self_test(sys.argv[index + 1:]))
+    from ifc_context_repair.app import main
+
     raise SystemExit(main())

@@ -150,6 +150,31 @@ class FailureSafetyTests(unittest.TestCase):
             self.assertEqual(source.read_bytes(), before)
             self.assertFalse(output.exists())
 
+    def test_failed_verification_quarantines_output_and_writes_failure_report(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder) / "sample.ifc"
+            output = Path(folder) / "sample_repaired.ifc"
+            self._fixture(source)
+            before = source.read_bytes()
+            with patch(
+                "ifc_context_repair.repair._verify_semantic_reopen",
+                side_effect=OutputError("simulated semantic verification failure"),
+            ):
+                with self.assertRaises(OutputError) as raised:
+                    repair_file(RepairConfig(source=source, output=output))
+            self.assertEqual(source.read_bytes(), before)
+            self.assertFalse(output.exists())
+            diagnostic_dir = Path(folder) / ".ifc_repair_diagnostics"
+            failed_ifcs = list(diagnostic_dir.glob("*.failed.ifc"))
+            failure_reports = list(diagnostic_dir.glob("*.failure.json"))
+            self.assertEqual(len(failed_ifcs), 1)
+            self.assertEqual(len(failure_reports), 1)
+            context = getattr(raised.exception, "repair_context")
+            self.assertEqual(
+                Path(context["quarantined_output_path"]), failed_ifcs[0]
+            )
+            self.assertEqual(Path(context["failure_report_path"]), failure_reports[0])
+
     def test_malformed_ifc_preserves_input(self):
         with tempfile.TemporaryDirectory() as folder:
             source = Path(folder) / "malformed.ifc"

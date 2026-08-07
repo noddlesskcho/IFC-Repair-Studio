@@ -9,6 +9,7 @@ from ifc_context_repair.indirect import (
     _resolve,
     is_repairable_in_mode,
 )
+from ifc_context_repair.repair_safety import apply_signature_policy
 from ifc_context_repair.models import (
     ConfidenceLevel,
     ContextInfo,
@@ -232,7 +233,9 @@ def test_type_owned_footprint_without_occurrences_is_high_confidence() -> None:
     assert item.status is Status.SAFE
     assert item.confidence_level is ConfidenceLevel.HIGH
     assert item.proposed_context and item.proposed_context.step_id == 28
-    assert is_repairable_in_mode(item, "advanced")
+    apply_signature_policy(item)
+    assert not is_repairable_in_mode(item, "advanced")
+    assert is_repairable_in_mode(item, "compat_footprint")
 
 
 def test_unsupported_and_orphaned_classifications() -> None:
@@ -256,8 +259,11 @@ def test_repair_modes_are_strict() -> None:
     indirect.status = Status.SAFE
     indirect.confidence_level = ConfidenceLevel.HIGH
     indirect.proposed_context = context(10)
+    apply_signature_policy(direct)
+    apply_signature_policy(indirect)
 
     assert is_repairable_in_mode(direct, "safe")
     assert not is_repairable_in_mode(indirect, "safe")
-    assert is_repairable_in_mode(indirect, "extended")
+    assert not is_repairable_in_mode(indirect, "extended")
+    assert is_repairable_in_mode(indirect, "compat_representationmap_body")
     assert not is_repairable_in_mode(direct, "audit")

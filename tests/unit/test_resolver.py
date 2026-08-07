@@ -47,11 +47,11 @@ class ResolverTests(unittest.TestCase):
         self.assertEqual(result.context.id(), 100)
         self.assertGreaterEqual(result.confidence, 0.70)
 
-    def test_identifier_only_is_warning(self):
+    def test_unsupported_identifier_is_not_repairable(self):
         rep, _, index = self.setup_index(["Custom", "Axis"], "Custom")
         result = resolve_context(rep, index)
-        self.assertEqual(result.status, Status.WARNING)
-        self.assertEqual(result.context.id(), 100)
+        self.assertEqual(result.status, Status.NOT_REPAIRABLE)
+        self.assertIsNone(result.context)
 
     def test_supplied_clean_profile_upgrades_matching_slab_body(self):
         rep, _, index = self.setup_index(["Body", "Axis"])

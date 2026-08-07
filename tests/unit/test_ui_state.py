@@ -1,11 +1,13 @@
 import os
 import unittest
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication, QMessageBox
 
+from ifc_context_repair import __version__
 from ifc_context_repair.models import RunReport
 from ifc_context_repair.ui.main_window import MainWindow, WorkflowState
 
@@ -48,6 +50,21 @@ class UiStateTests(unittest.TestCase):
         self.window._apply_state(WorkflowState.NO_ISSUES)
         self.assertTrue(self.window.repair_button.isHidden())
 
+    def test_failed_check_can_be_retried(self):
+        self.window.source_path = Path("sample.ifc")
+        self.window.metadata = Mock()
+        self.window._apply_state(WorkflowState.FAILED)
+        self.assertFalse(self.window.action_row.isHidden())
+        self.assertFalse(self.window.scan_button.isHidden())
+        self.assertTrue(self.window.scan_button.isEnabled())
+        self.assertEqual(self.window.scan_button.text(), "Check Again")
+        self.assertEqual(self.window.scan_button.objectName(), "primary")
+        self.assertTrue(self.window.repair_button.isHidden())
+        self.window._start_job = Mock()
+        self.window.scan_button.click()
+        self.window._start_job.assert_called_once()
+        self.assertEqual(self.window._start_job.call_args.args[0], "scan")
+
     def test_simplified_ui_has_no_theme_or_folder_controls(self):
         self.assertFalse(hasattr(self.window, "theme_button"))
         self.assertFalse(hasattr(self.window, "open_source_folder_button"))
@@ -58,10 +75,20 @@ class UiStateTests(unittest.TestCase):
         self.assertEqual(self.window.report_button.text(), "Open Detailed Report")
         self.assertEqual(self.window.another_button.text(), "Check Another IFC")
 
-    def test_only_two_user_facing_modes(self):
+    def test_two_version1_user_facing_modes(self):
         self.assertEqual(self.window.repair_mode_audit.text(), "Audit Only")
         self.assertEqual(self.window.repair_mode_repair.text(), "Repair IFC")
+        self.assertFalse(hasattr(self.window, "repair_mode_compatibility"))
         self.assertTrue(self.window.repair_mode_repair.isChecked())
+
+    def test_title_displays_version_and_ifc_schema_issue(self):
+        self.assertIn(f"v{__version__}", self.window.windowTitle())
+        visible_text = " ".join(
+            label.text() for label in self.window.findChildren(type(self.window.status_badge))
+        )
+        self.assertIn(f"v{__version__}", visible_text)
+        self.assertIn("IfcShapeRepresentation", visible_text)
+        self.assertIn("IFC4 schema non-compliance", visible_text)
 
     def test_engineering_classification_is_not_exposed(self):
         self.assertTrue(self.window.classification_card.isHidden())

@@ -7,7 +7,13 @@ from typing import Any
 
 from ..detector import diagnose_model
 from ..indirect import classify_missing_contexts, is_repairable_in_mode
-from ..models import Diagnosis, RepresentationClassification, Status
+from ..models import (
+    ConfidenceLevel,
+    Diagnosis,
+    RepresentationClassification,
+    Status,
+)
+from ..repair_safety import apply_signature_policy
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,24 +104,21 @@ ELEMENT_POLICIES = (
 
 
 class ProductMissingShapeContextRule(RepairRule):
-    rule_id = "PRODUCT_MISSING_SHAPE_CONTEXT_V2"
-    version = "2.0"
-    display_name = "Safe Product Shape Context Repair"
+    rule_id = "DIRECT_PRODUCT_MISSING_CONTEXT_V1"
+    version = "1.0"
+    display_name = "Direct Product Geometry Reference Repair"
     description = (
-        "Repairs missing ContextOfItems on qualified, directly owned slab, wall, "
-        "opening, railing and covering shape representations."
+        "Repairs supported missing geometry references on directly owned "
+        "IfcProduct shape representations."
     )
-    supported_schemas = ("IFC2X3", "IFC4", "IFC4X3")
-    policies = ELEMENT_POLICIES
-    supported_product_types = tuple(
-        policy.product_type for policy in ELEMENT_POLICIES
-    )
-    allowed_signatures = {
-        policy.product_type: policy.allowed_signatures for policy in ELEMENT_POLICIES
-    }
-    policy_by_type = {
-        policy.product_type: policy for policy in ELEMENT_POLICIES
-    }
+    supported_schemas = ("IFC4",)
+    supported_product_types = ("IfcProduct",)
+    supported_signatures = frozenset({
+        ("body", "sweptsolid"),
+        ("body", "tessellation"),
+        ("footprint", "curve2d"),
+    })
+    allowed_signatures = {"*": supported_signatures}
 
     def detect(
         self, model: Any, *, timings: dict[str, float] | None = None,
@@ -129,9 +132,41 @@ class ProductMissingShapeContextRule(RepairRule):
             timings=timings, progress=progress, cancelled=cancelled,
         )
         for item in diagnoses:
-            scope = index.product_scope.get(item.product_step_id or -1, "")
-            policy = self.policy_by_type.get(scope)
-            item.rule_id = policy.rule_id if policy else self.rule_id
+            item.classification = RepresentationClassification.DIRECT_PRODUCT
+            signature = (
+                str(item.representation_identifier or "").casefold(),
+                str(item.representation_type or "").casefold(),
+            )
+            item.rule_id = {
+                ("body", "sweptsolid"):
+                    "DIRECT_PRODUCT_BODY_SWEPTSOLID_MISSING_CONTEXT_V1",
+                ("body", "tessellation"):
+                    "DIRECT_PRODUCT_BODY_TESSELLATION_MISSING_CONTEXT_V1",
+                ("footprint", "curve2d"):
+                    "DIRECT_PRODUCT_FOOTPRINT_CURVE2D_MISSING_CONTEXT_V1",
+            }.get(signature, self.rule_id)
+            item.repair_signature = (
+                f"DirectProduct/{item.representation_identifier or '-'}"
+                f"/{item.representation_type or '-'}"
+            )
+            repairable = (
+                item.status is Status.SAFE and item.proposed_context is not None
+            )
+            item.confidence_level = (
+                ConfidenceLevel.HIGH if repairable else ConfidenceLevel.LOW
+            )
+            item.production_enabled = repairable
+            item.safety_level = "Production-Safe" if repairable else "Report Only"
+            item.viewer_test_status = "Version 1 supported scope"
+            item.proposed_action = (
+                "Repair" if repairable else "Unable to determine safely"
+            )
+            item.repair_decision_reason = (
+                "Direct ownership, supported signature and one unique compatible "
+                "project context were proven."
+                if repairable else
+                "The Version 1 direct-product evidence requirements were not all met."
+            )
         targets = [
             RepairTarget(
                 product_step_id=item.product_step_id,
@@ -155,11 +190,16 @@ class ProductMissingShapeContextRule(RepairRule):
         ]
         affected = {item.product_step_id or item.owner_step_id for item in diagnoses}
         type_counts: dict[str, dict[str, int]] = {}
-        for product_type in self.supported_product_types:
+        for product_type in sorted(index.products_by_scope):
             scoped = [
                 item for item in diagnoses
                 if index.product_scope.get(item.product_step_id or -1) == product_type
             ]
+            # Ordinary reports are issue-focused. Product classes that were
+            # scanned but had no supported finding add noise without improving
+            # the element breakdown.
+            if not scoped:
+                continue
             type_counts[product_type] = {
                 "elements_scanned": int(index.products_by_scope[product_type]),
                 "elements_affected": len({
@@ -199,10 +239,12 @@ class SlabMissingShapeContextRule(ProductMissingShapeContextRule):
     rule_id = "SLAB_MISSING_SHAPE_CONTEXT_V1"
     version = "1.0"
     display_name = "Slab - Missing Shape Representation Context"
-    policies = ProductMissingShapeContextRule.policies[:1]
     supported_product_types = ("IfcSlab",)
-    allowed_signatures = {"IfcSlab": policies[0].allowed_signatures}
-    policy_by_type = {"IfcSlab": policies[0]}
+    allowed_signatures = {
+        "IfcSlab": frozenset({
+            ("body", "sweptsolid"), ("footprint", "curve2d")
+        })
+    }
 
 
 class EnhancedMissingShapeContextRule(RepairRule):
@@ -298,6 +340,10 @@ class EnhancedMissingShapeContextRule(RepairRule):
                 "reported_only": sum(
                     not is_repairable_in_mode(item, repair_mode) for item in scoped
                 ),
+                "production_safe": sum(item.production_enabled for item in scoped),
+                "experimental": sum(
+                    item.safety_level == "Experimental" for item in scoped
+                ),
                 "repaired": 0,
                 "remaining": len(scoped),
             }
@@ -314,4 +360,4 @@ class EnhancedMissingShapeContextRule(RepairRule):
         )
 
 
-ACTIVE_RULE = EnhancedMissingShapeContextRule()
+ACTIVE_RULE = ProductMissingShapeContextRule()

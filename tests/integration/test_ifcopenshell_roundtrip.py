@@ -87,8 +87,9 @@ class IfcOpenShellRoundTripTests(unittest.TestCase):
             with patch("ifc_context_repair.repair.open_model", wraps=open_model) as mocked_open:
                 report = repair_file(RepairConfig(source=path, output=semantic_output,
                                                   create_backup=False))
-                # Fast targeted verification avoids reopening the complete output.
-                self.assertEqual(mocked_open.call_count, 1)
+                # Production verification now mandates one source open and one
+                # repaired-output reopen with entity-count comparison.
+                self.assertEqual(mocked_open.call_count, 2)
             self.assertEqual(report.output, str(semantic_output.resolve()))
             self.assertEqual(len(report.diagnoses), 2)
             self.assertTrue(all(item.repaired for item in report.diagnoses))

@@ -15,6 +15,11 @@ from .models import (
     RepresentationClassification,
     Status,
 )
+from .repair_safety import (
+    RepairSafetyLevel,
+    apply_signature_policy,
+    compatibility_profile_allows,
+)
 
 
 Progress = Callable[[str, int, int], None]
@@ -800,6 +805,7 @@ def classify_missing_contexts(
                 diagnosis.conflicts.append(
                     "Opening is not connected to a host through IfcRelVoidsElement"
                 )
+        apply_signature_policy(diagnosis)
         diagnoses.append(diagnosis)
         if progress and (position % 250 == 0 or position == len(missing)):
             progress("indirect_classification", position, len(missing))
@@ -816,13 +822,19 @@ def is_repairable_in_mode(diagnosis: Diagnosis, mode: str) -> bool:
     normalized = mode.strip().casefold()
     if normalized == "audit":
         return False
-    if normalized in {"safe", "targeted"}:
-        return diagnosis.classification is RepresentationClassification.DIRECT_PRODUCT
-    if normalized in {"extended", "advanced"}:
-        return diagnosis.classification in {
-            RepresentationClassification.DIRECT_PRODUCT,
-            RepresentationClassification.SHAPE_ASPECT_PRODUCT,
-            RepresentationClassification.REPRESENTATION_MAP,
-            RepresentationClassification.SHAPE_ASPECT_REPRESENTATION_MAP,
-        }
+    if normalized in {
+        "safe", "targeted", "production", "repair", "extended", "advanced",
+    }:
+        # Legacy extended/advanced values deliberately map to the production
+        # allow-list. Semantic confidence alone must never enable an
+        # experimental indirect representation repair.
+        return diagnosis.production_enabled
+    if normalized.startswith("compat_"):
+        return (
+            diagnosis.production_enabled
+            or (
+                diagnosis.safety_level == RepairSafetyLevel.EXPERIMENTAL.value
+                and compatibility_profile_allows(diagnosis, normalized)
+            )
+        )
     return False

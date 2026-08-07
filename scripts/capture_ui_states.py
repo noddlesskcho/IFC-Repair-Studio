@@ -36,7 +36,9 @@ def assessment(*, supported: bool = True) -> FileAssessment:
 
 
 def result_report(*, supported: bool = True, repaired: bool = False) -> RunReport:
-    ready = 29_304 if supported else 0
+    ready = 8_926 if supported else 0
+    experimental = 20_362 if supported else 0
+    review = 16 if supported else 29_304
     report = RunReport(
         source=str(SOURCE),
         output=str(SOURCE.with_name("Sample Project_repaired.ifc")) if repaired else None,
@@ -47,22 +49,27 @@ def result_report(*, supported: bool = True, repaired: bool = False) -> RunRepor
         summary_counts={
             "AffectedRepresentations": 29_304,
             "AutomaticallyRepairable": ready,
-            "ReportOnlyFindings": 3,
-            "AmbiguousFindings": 0 if supported else 29_304,
-            "SuccessfullyRepaired": 29_304 if repaired else 0,
-            "TargetedIssuesRemaining": 0 if repaired else 29_304,
+            "SupportedRepairs": ready,
+            "ExperimentalFindings": experimental,
+            "ItemsRequiringReview": review,
+            "ReportOnlyFindings": review,
+            "AmbiguousFindings": 0,
+            "SuccessfullyRepaired": ready if repaired else 0,
+            "TargetedIssuesRemaining": (
+                experimental + review if repaired else 29_304
+            ),
         },
         file_assessment=assessment(supported=supported),
         targeted_verification={
             "passed": repaired,
-            "intended": 29_304 if repaired else 0,
-            "verified": 29_304 if repaired else 0,
-            "remaining": 0 if repaired else 29_304,
+            "intended": ready if repaired else 0,
+            "verified": ready if repaired else 0,
+            "remaining": 0 if repaired else ready,
         },
         change_audit={
             "passed": repaired,
-            "expected_modified_records": 29_304 if repaired else 0,
-            "actual_modified_records": 29_304 if repaired else 0,
+            "expected_modified_records": ready if repaired else 0,
+            "actual_modified_records": ready if repaired else 0,
             "unexpected_modified_records": 0,
         },
         report_paths={
@@ -143,6 +150,9 @@ def main() -> int:
         "AutomaticallyRepairable": 0,
         "ReportOnlyFindings": 0,
         "AmbiguousFindings": 0,
+        "SupportedRepairs": 0,
+        "ExperimentalFindings": 0,
+        "ItemsRequiringReview": 0,
     })
     window.report = no_issues
     window._show_scan_results(no_issues)
@@ -164,6 +174,46 @@ def main() -> int:
         "temporary_file_removed": True,
     })
     capture(window, "10-repair-failed", bottom=True)
+
+    window.repair_mode_compatibility.setChecked(True)
+    compatibility = result_report()
+    window.report = compatibility
+    window._show_scan_results(compatibility)
+    window._apply_state(WorkflowState.ISSUES_FOUND)
+    capture(window, "11-compatibility-test-mode")
+
+    compatibility.generated_outputs = [
+        {
+            "profile_id": "direct_product_only",
+            "status": "Generated and internally verified",
+        },
+        {
+            "profile_id": "shapeaspect_sweptsolid",
+            "status": "Generated and internally verified",
+        },
+        {
+            "profile_id": "shapeaspect_tessellation",
+            "status": "Generated and internally verified",
+        },
+        {
+            "profile_id": "representationmap_body",
+            "status": "Generated and internally verified",
+        },
+        {
+            "profile_id": "representationmap_footprint",
+            "status": "Generated and internally verified",
+        },
+        {
+            "profile_id": "all_experimental",
+            "status": "Generated and internally verified",
+        },
+    ]
+    compatibility.report_paths["compatibility_matrix_html"] = str(
+        SCREENSHOTS / "Compatibility_Test_Matrix.html"
+    )
+    window.operation = "repair"
+    window._completed(compatibility)
+    capture(window, "12-compatibility-tests-completed", bottom=True)
 
     window.close()
     return 0

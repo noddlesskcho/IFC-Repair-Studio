@@ -22,9 +22,9 @@ submission.
 2. Choose **Repair IFC** or **Audit Only**.
 3. Select **Check IFC**.
 4. Review:
-   - Geometry References to Repair
+   - Geometry References Found
    - Ready to Repair
-   - Items to Check in Revit
+   - Items Remaining
    - IFC Verification
 5. If repair is available, select **Repair IFC**.
 6. Open the repaired IFC or Detailed Report.
@@ -35,8 +35,10 @@ Checks the IFC and generates a report without changing the file.
 
 ### Repair IFC
 
-Checks the IFC, repairs all supported issues that can be resolved safely, and
-verifies the repaired IFC. The original IFC remains unchanged.
+Repairs supported Body / SweptSolid, Body / Tessellation and FootPrint / Curve2D
+geometry references directly owned by products, then verifies the repaired IFC.
+The original IFC remains unchanged. ShapeAspect and RepresentationMap geometry
+references are outside the Version 1 scope and are not scanned or modified.
 
 ## Unsupported files
 

@@ -1,40 +1,38 @@
 # PyInstaller warning classification — v1.0.0
 
 Build warning source:
-`build/IFCSGRepairAssistant-1.0.0/warn-IFCSGRepairAssistant-1.0.0.txt`
+`build-final/IFCSGRepairAssistant-1.0.0/warn-IFCSGRepairAssistant-1.0.0.txt`
 
-The final build contains 250 missing/excluded-module warning lines. The count is
-inflated by NumPy's generated public symbols. Warnings were classified from
-their import sites and then checked against the packaged end-to-end test.
+Warnings are classified from their import sites and checked against the source
+test suite, a 622.6 MB end-to-end regression, and a packaged self-test.
 
 | Category | Examples | Classification | Action |
 |---|---|---|---|
 | Non-Windows platform modules | `pwd`, `grp`, `fcntl`, `termios`, `posix`, `resource`, `_scproxy` | Expected platform-specific | None |
 | PyInstaller bootstrap aliases | `pyimod02_importers`, selected `multiprocessing.*` names | False positive | None |
-| Optional Lark features | `rich`, `pydot`, `regex`, `interegular`, `atomicwrites` | Optional dependency | None; not used by the production IFC path |
-| Optional IfcOpenShell tooling | `mvd_info`, `express_parser`, `schema_class`, `codegen`, `_pytest` | Development or optional tooling | Keep excluded; production semantic loading and repair are packaged and tested |
-| NumPy generated symbols | `numpy._core.*` scalar and ufunc names | False positive from dynamic exports | None; packaged NumPy imports successfully |
+| Optional Lark features | `rich`, `pydot`, `regex`, `interegular`, `atomicwrites` | Optional dependency | Not used by the production IFC path |
+| Optional IfcOpenShell tooling | `simple_spf`, `express_parser`, `schema_class`, `codegen`, `_pytest` | Development or optional tooling | Keep excluded |
+| NumPy generated symbols | `numpy._core.*` scalar and ufunc names | False positive from dynamic exports | No action |
 | Cross-runtime probes | `java`, `java.lang`, `vms_lib`, `_winreg` | Expected conditional imports | None |
-| Optional diagnostics | `psutil` | Optional dependency | Spec includes it automatically when installed; Windows diagnostics fallback remains active |
-| Required UI/reporting/runtime | PySide6, ReportLab, Pillow, IfcOpenShell | No unresolved required-module warning | Bundled and exercised by packaged self-test |
+| Optional diagnostics | `psutil` | Optional dependency | Bundle when installed; diagnostics degrade gracefully |
+| ReportLab dynamic exports | `XPreformatted`, `cleanBlockQuotedText`, `reportlab_mods` | False positive or optional extension | PDF generation is exercised end to end |
+| Required runtime | PySide6, Pillow, ReportLab, IfcOpenShell | No unresolved required-module warning | Bundled and exercised by the packaged self-test |
 
-No warning was suppressed merely to reduce the count. OCC/3D geometry rendering,
-pytest, and developer tooling remain outside the runtime because the application
-does not use them in its normal production path.
+No warning is suppressed merely to reduce the warning count. OCC/3D rendering,
+pytest and developer-only tooling remain outside the frozen runtime because the
+Version 1 application does not use them.
 
-## Packaged validation
+## Validation
 
-The windowed v1.0.0 executable completed an end-to-end diagnostic run using a
-synthetic IFC4 IFC+SG fixture:
+The v1.0.0 workflow verified:
 
-- semantic IFC load completed;
-- direct and type-owned representation-map rules executed;
-- two variable-length STEP repairs were written through the streaming patcher;
-- targeted verification passed;
-- unexpected changed records: zero;
-- three report-only audit findings were produced;
-- PDF and HTML reports were generated;
-- process exit code: zero.
+- direct-product Body / SweptSolid, Body / Tessellation and FootPrint / Curve2D;
+- disabled ShapeAspect and RepresentationMap rules skipped before detection;
+- variable-length targeted STEP patching;
+- targeted verification and semantic reopen verification;
+- zero unexpected changed records;
+- independent PDF and HTML report generation.
 
-This validation is stronger evidence than an empty warning file: it exercises
-the modules the production workflow actually imports.
+The packaged self-test exercises the frozen IfcOpenShell, patch writer,
+verification and report stack. This evidence is more useful than hiding optional
+warnings simply to make the warning file empty.

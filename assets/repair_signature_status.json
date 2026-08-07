@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "workflow": "IFC+SG / CORENET X",
+  "note": "Production enablement requires explicit internal verification and CORENET X Viewer approval.",
+  "signatures": {
+    "DirectProduct/Body/SweptSolid": {
+      "safety_level": "Production-Safe",
+      "internal_verification": "passed",
+      "corenet_x_viewer": "Passed",
+      "production_enabled": true,
+      "reason": "Direct-product Body / SweptSolid has an explicitly recorded successful viewer test."
+    },
+    "DirectProduct/Body/Tessellation": {
+      "safety_level": "Experimental",
+      "internal_verification": "passed",
+      "corenet_x_viewer": "Not Tested",
+      "production_enabled": false,
+      "reason": "Internal verification passed, but CORENET X Viewer compatibility is not recorded."
+    },
+    "DirectProduct/FootPrint/Curve2D": {
+      "safety_level": "Experimental",
+      "internal_verification": "passed",
+      "corenet_x_viewer": "Not Tested",
+      "production_enabled": false,
+      "reason": "The semantic FootPrint context may be testable, but production viewer compatibility is not recorded."
+    },
+    "ShapeAspect/Body/SweptSolid": {
+      "safety_level": "Experimental",
+      "internal_verification": "passed",
+      "corenet_x_viewer": "Inconclusive",
+      "production_enabled": false,
+      "reason": "ShapeAspect activation may change viewer geometry processing; compatibility is not confirmed."
+    },
+    "ShapeAspect/Body/Tessellation": {
+      "safety_level": "Experimental",
+      "internal_verification": "passed",
+      "corenet_x_viewer": "Inconclusive",
+      "production_enabled": false,
+      "reason": "A broad ShapeAspect repair previously produced a CORENET X Viewer compatibility concern."
+    },
+    "ShapeAspectMap/Body/SweptSolid": {
+      "safety_level": "Experimental",
+      "internal_verification": "passed",
+      "corenet_x_viewer": "Not Tested",
+      "production_enabled": false,
+      "reason": "Indirect reusable shape-aspect geometry requires isolated viewer testing."
+    },
+    "ShapeAspectMap/Body/Tessellation": {
+      "safety_level": "Experimental",
+      "internal_verification": "passed",
+      "corenet_x_viewer": "Not Tested",
+      "production_enabled": false,
+      "reason": "Indirect reusable tessellation requires isolated viewer testing."
+    },
+    "RepresentationMap/Body/SweptSolid": {
+      "safety_level": "Experimental",
+      "internal_verification": "passed",
+      "corenet_x_viewer": "Not Tested",
+      "production_enabled": false,
+      "reason": "Reusable map geometry has not passed isolated CORENET X Viewer testing."
+    },
+    "RepresentationMap/Body/Tessellation": {
+      "safety_level": "Experimental",
+      "internal_verification": "passed",
+      "corenet_x_viewer": "Not Tested",
+      "production_enabled": false,
+      "reason": "Reusable tessellation has not passed isolated CORENET X Viewer testing."
+    },
+    "RepresentationMap/FootPrint/Curve2D": {
+      "safety_level": "Experimental",
+      "internal_verification": "passed",
+      "corenet_x_viewer": "Not Tested",
+      "production_enabled": false,
+      "reason": "The FootPrint subcontext can be resolved semantically, but viewer compatibility is unproven."
+    }
+  }
+}

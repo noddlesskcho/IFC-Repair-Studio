@@ -61,6 +61,7 @@ class _ContextRule(IfcSgRule):
 
 
 class DirectProductMissingContextRule(_ContextRule):
+    feature_flag = "enable_direct_product_repairs"
     rule_id = "DIRECT_PRODUCT_MISSING_CONTEXT_V2"
     title = "Direct product missing representation context"
     purpose = "Repair missing contexts on directly owned product shape representations."
@@ -68,22 +69,69 @@ class DirectProductMissingContextRule(_ContextRule):
     classification = RepresentationClassification.DIRECT_PRODUCT
 
 
+class DirectProductSweptSolidRule(DirectProductMissingContextRule):
+    rule_id = "DIRECT_PRODUCT_BODY_SWEPTSOLID_MISSING_CONTEXT_V1"
+    title = "Direct-product Body / SweptSolid missing context"
+    supported_signatures = ("Body / SweptSolid",)
+
+    def _matches(self, item: Diagnosis) -> bool:
+        return (
+            str(item.representation_identifier or "").casefold() == "body"
+            and str(item.representation_type or "").casefold() == "sweptsolid"
+        )
+
+
+class DirectProductTessellationRule(DirectProductMissingContextRule):
+    rule_id = "DIRECT_PRODUCT_BODY_TESSELLATION_MISSING_CONTEXT_V1"
+    title = "Direct-product Body / Tessellation missing context"
+    maturity = "EXPERIMENTAL"
+    repair_mode = "COMPATIBILITY_TEST"
+    supported_signatures = ("Body / Tessellation",)
+    known_limitations = _ContextRule.known_limitations + (
+        "Production enablement requires a recorded successful CORENET X Viewer test",
+    )
+
+    def _matches(self, item: Diagnosis) -> bool:
+        return (
+            str(item.representation_identifier or "").casefold() == "body"
+            and str(item.representation_type or "").casefold() == "tessellation"
+        )
+
+
+class DirectProductFootprintRule(DirectProductMissingContextRule):
+    rule_id = "DIRECT_PRODUCT_FOOTPRINT_CURVE2D_MISSING_CONTEXT_V1"
+    title = "Direct-product FootPrint / Curve2D missing context"
+    maturity = "EXPERIMENTAL"
+    repair_mode = "COMPATIBILITY_TEST"
+    supported_signatures = ("FootPrint / Curve2D",)
+
+    def _matches(self, item: Diagnosis) -> bool:
+        return (
+            str(item.representation_identifier or "").casefold() == "footprint"
+            and str(item.representation_type or "").casefold() == "curve2d"
+        )
+
+
 class ShapeAspectMissingContextRule(_ContextRule):
+    feature_flag = "enable_shape_aspect_repairs"
     rule_id = "SHAPE_ASPECT_PRODUCT_MISSING_CONTEXT_V1"
     title = "Shape-aspect missing representation context"
     purpose = "Repair proven missing contexts on product-owned shape aspects."
-    repair_mode = "ADVANCED"
+    repair_mode = "COMPATIBILITY_TEST"
+    maturity = "EXPERIMENTAL"
     classification = RepresentationClassification.SHAPE_ASPECT_PRODUCT
 
 
 class ShapeAspectMapMissingContextRule(_ContextRule):
+    feature_flag = "enable_shape_aspect_repairs"
     rule_id = "SHAPE_ASPECT_MAP_MISSING_CONTEXT_V1"
     title = "Shape-aspect representation-map missing context"
     purpose = (
         "Repair proven missing contexts on shape-aspect representations owned "
         "through reusable representation maps."
     )
-    repair_mode = "ADVANCED"
+    repair_mode = "COMPATIBILITY_TEST"
+    maturity = "EXPERIMENTAL"
     classification = RepresentationClassification.SHAPE_ASPECT_REPRESENTATION_MAP
     known_limitations = _ContextRule.known_limitations + (
         "Requires one compatible context proven by map ownership or usage evidence",
@@ -92,10 +140,12 @@ class ShapeAspectMapMissingContextRule(_ContextRule):
 
 
 class RepresentationMapMissingContextRule(_ContextRule):
+    feature_flag = "enable_representation_map_repairs"
     rule_id = "REPRESENTATION_MAP_MISSING_CONTEXT_V1"
     title = "Reusable representation map missing context"
     purpose = "Repair proven missing contexts in reusable mapped geometry."
-    repair_mode = "ADVANCED"
+    repair_mode = "COMPATIBILITY_TEST"
+    maturity = "EXPERIMENTAL"
     classification = RepresentationClassification.REPRESENTATION_MAP
 
     def _matches(self, item: Diagnosis) -> bool:
@@ -106,13 +156,15 @@ class RepresentationMapMissingContextRule(_ContextRule):
 
 
 class RepresentationMapFootprintRule(_ContextRule):
+    feature_flag = "enable_representation_map_repairs"
     rule_id = "REPRESENTATION_MAP_FOOTPRINT_MISSING_CONTEXT_V1"
     title = "Type-level FootPrint representation map missing context"
     purpose = (
         "Repair a missing FootPrint / Curve2D context where map ownership or usage, "
         "semantic peers, and project context hierarchy prove one value."
     )
-    repair_mode = "ADVANCED"
+    repair_mode = "COMPATIBILITY_TEST"
+    maturity = "EXPERIMENTAL"
     classification = RepresentationClassification.REPRESENTATION_MAP
     supported_signatures = ("FootPrint / Curve2D",)
     known_limitations = _ContextRule.known_limitations + (
@@ -365,7 +417,9 @@ class GeoreferencingAuditRule(IfcSgRule):
 def build_registry() -> IfcSgRuleRegistry:
     registry = IfcSgRuleRegistry()
     for rule in (
-        DirectProductMissingContextRule(),
+        DirectProductSweptSolidRule(),
+        DirectProductTessellationRule(),
+        DirectProductFootprintRule(),
         ShapeAspectMissingContextRule(),
         ShapeAspectMapMissingContextRule(),
         RepresentationMapMissingContextRule(),
