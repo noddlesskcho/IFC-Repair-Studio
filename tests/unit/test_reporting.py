@@ -88,11 +88,13 @@ class ReportingTests(unittest.TestCase):
             html = paths["html"].read_text(encoding="utf-8")
             self.assertIn("3ExampleGlobalId", html)
             self.assertIn("Export filtered CSV", html)
-            self.assertIn("Export filtered JSON", html)
             self.assertIn("Search STEP ID", html)
-            self.assertIn('id="classification"', html)
-            self.assertIn("id='shape-aspects'", html)
-            self.assertIn("id='representation-maps'", html)
+            self.assertNotIn("Export filtered JSON", html)
+            self.assertIn('id="elementFilter"', html)
+            self.assertIn('id="representationFilter"', html)
+            self.assertNotIn('id="classificationFilter"', html)
+            self.assertNotIn('id="confidenceFilter"', html)
+            self.assertNotIn('id="verifyFilter"', html)
             self.assertIn('id="verification"', html)
             self.assertIn("outcome-grid", html)
             self.assertIn("IFC+SG File Assessment", html)
@@ -104,18 +106,44 @@ class ReportingTests(unittest.TestCase):
                 html,
             )
             for tab in (
-                "Summary", "Repair Records",
-                "Report-Only Checks", "Verification", "Technical Details",
+                "Summary", "Repairs Applied",
+                "Items to Review", "Verification", "Technical Details",
             ):
                 self.assertIn(f">{tab}</a>", html)
             self.assertNotIn('id="items-review"', html)
             self.assertNotIn(">Unresolved Geometry</a>", html)
-            self.assertIn("REPAIRED IN IFC", html)
+            self.assertIn("SUPPORTED", html)
+            self.assertNotIn("Experimental Findings", html)
+            self.assertNotIn("Compatibility Test Matrix", html)
+            self.assertIn("IfcShapeAspect and IfcRepresentationMap", html)
             self.assertIn("REPORT ONLY", html)
             self.assertIn("No IFC change was applied", html)
-            self.assertIn("<th>Outcome</th>", html)
+            self.assertIn('data-sort="outcome"', html)
             self.assertIn("REVIEW IN REVIT", html)
             self.assertNotIn("C:/project/", html)
+
+    def test_geometry_records_have_simplified_columns_scrollbars_and_sort_arrows(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "records.html"
+            HTMLReportBuilder().build(self.report(), path)
+            html = path.read_text(encoding="utf-8")
+
+            self.assertIn('id="recordsTopScroll"', html)
+            self.assertIn('id="recordsTableWrap"', html)
+            self.assertIn('id="recordsTable"', html)
+            self.assertIn('aria-sort="ascending"', html)
+            self.assertIn("sort-indicator", html)
+            self.assertIn("Repair type:", html)
+            self.assertNotIn('data-sort="rule"', html)
+            self.assertNotIn('data-sort="confidence"', html)
+            self.assertNotIn('data-sort="verification"', html)
+            self.assertNotIn('data-sort="old_context"', html)
+            self.assertNotIn('data-sort="new_context"', html)
+            for heading in (
+                "Outcome", "STEP ID", "GlobalId", "Element", "Name",
+                "Representation", "Details",
+            ):
+                self.assertIn(f">{heading}<span class=\"sort-indicator\">", html)
 
     def test_unresolved_geometry_section_only_appears_when_needed(self):
         report = self.report()

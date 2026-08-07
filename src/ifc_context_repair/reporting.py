@@ -55,6 +55,9 @@ def _counts(report: RunReport) -> dict[str, int]:
         "not_repairable": report.summary_counts.get("NotAutomaticallyRepairable", 0),
         "repaired": repaired,
         "remaining": remaining,
+        "supported": report.summary_counts.get("SupportedRepairs", 0),
+        "experimental": report.summary_counts.get("ExperimentalFindings", 0),
+        "review": report.summary_counts.get("ItemsRequiringReview", 0),
     }
 
 
@@ -85,6 +88,22 @@ def _element_statistics(report: RunReport) -> list[tuple[str, str]]:
                 f"{counts.get('automatically_repairable', 0):,} safe"
             ),
         ))
+    return rows
+
+
+def _version1_element_breakdown(report: RunReport) -> list[tuple[str, str]]:
+    """Stable user breakdown with future direct-product classes grouped."""
+    known = ("IfcSlab", "IfcOpeningElement", "IfcCovering")
+    rows: list[tuple[str, str]] = []
+    for product_type in known:
+        values = report.element_type_counts.get(product_type, {})
+        rows.append((product_type, f"{values.get('affected_representations', 0):,}"))
+    other = sum(
+        values.get("affected_representations", 0)
+        for product_type, values in report.element_type_counts.items()
+        if product_type not in known
+    )
+    rows.append(("Other direct-product classes", f"{other:,}"))
     return rows
 
 
@@ -127,6 +146,11 @@ def _records(
             "downstream_processing_risk": item.downstream_processing_risk,
             "repair_priority": item.repair_priority,
             "proposed_action": item.proposed_action,
+            "repair_signature": item.repair_signature,
+            "safety_level": item.safety_level,
+            "viewer_test_status": item.viewer_test_status,
+            "production_enabled": item.production_enabled,
+            "repair_decision_reason": item.repair_decision_reason,
         })
     return records
 
@@ -231,9 +255,9 @@ class PDFReportBuilder(IReportBuilder):
 
         story += section("Executive Summary")
         kpis = [
-            (counts["repaired"], "Repaired in Output IFC"),
-            (counts["remaining"], "Not Repaired Automatically"),
-            (report_only_count, "Report Only - Review in Revit"),
+            (counts["affected"], "Geometry References Found"),
+            (counts["repairable"], "Ready to Repair"),
+            (counts["remaining"], "Supported Items Remaining"),
             ("VERIFIED" if verification_passed else "CHECK", "IFC Verification"),
         ]
         cards = Table(
@@ -248,7 +272,7 @@ class PDFReportBuilder(IReportBuilder):
             ("TOPPADDING", (0, 0), (-1, 0), 12),
             ("BOTTOMPADDING", (0, 1), (-1, 1), 12),
         ]))
-        outcome_guide = Table([
+        outcome_rows = [
             [
                 p("REPAIRED AND VERIFIED"),
                 p(
@@ -256,27 +280,33 @@ class PDFReportBuilder(IReportBuilder):
                     "in the repaired IFC and passed targeted verification."
                 ),
             ],
-            [
+        ]
+        if review_in_revit_count:
+            outcome_rows.append([
                 p("REVIEW IN REVIT - NO CHANGE APPLIED"),
                 p(
                     f"{review_in_revit_count:,} item(s) are shown for review only: "
                     f"{counts['remaining']:,} unresolved geometry reference(s) and "
                     f"{report_only_count:,} additional audit observation(s)."
                 ),
-            ],
-        ], colWidths=[58 * mm, 122 * mm])
-        outcome_guide.setStyle(TableStyle([
+            ])
+        outcome_guide = Table(outcome_rows, colWidths=[58 * mm, 122 * mm])
+        outcome_style = [
             ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#ecfdf3")),
-            ("BACKGROUND", (0, 1), (-1, 1), colors.HexColor("#fffaeb")),
             ("TEXTCOLOR", (0, 0), (0, 0), colors.HexColor("#067647")),
-            ("TEXTCOLOR", (0, 1), (0, 1), colors.HexColor("#b54708")),
             ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#d0d5dd")),
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
             ("LEFTPADDING", (0, 0), (-1, -1), 7),
             ("RIGHTPADDING", (0, 0), (-1, -1), 7),
             ("TOPPADDING", (0, 0), (-1, -1), 7),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
-        ]))
+        ]
+        if review_in_revit_count:
+            outcome_style.extend([
+                ("BACKGROUND", (0, 1), (-1, 1), colors.HexColor("#fffaeb")),
+                ("TEXTCOLOR", (0, 1), (0, 1), colors.HexColor("#b54708")),
+            ])
+        outcome_guide.setStyle(TableStyle(outcome_style))
         story += [cards, Spacer(1, 5 * mm), outcome_guide, Spacer(1, 10 * mm),
                   Paragraph("File Information", styles["Heading2"]),
                   key_value([
@@ -325,12 +355,16 @@ class PDFReportBuilder(IReportBuilder):
                 "Representations",
                 "Body / SweptSolid, Body / Tessellation and FootPrint / Curve2D",
             ),
-            ("Ownership", "Direct products, shape aspects and representation maps"),
+            (
+                "Production ownership",
+                "Direct IfcProductDefinitionShape ownership only",
+            ),
             (
                 "Excluded",
-                "Unsupported signatures, ambiguous ownership and unproven contexts",
+                "IfcShapeAspect and IfcRepresentationMap rules are disabled in "
+                "Version 1 and were not scanned or modified",
             ),
-        ]), Spacer(1, 10 * mm), Paragraph("Performance Summary", styles["Heading2"])]
+        ]), PageBreak(), Paragraph("Performance Summary", styles["Section"])]
         performance = [
             ("Open IFC", report.durations.get("ifc_opening", 0.0)),
             ("Target elements", report.durations.get("collect_target_elements", 0.0)),
@@ -372,18 +406,18 @@ class PDFReportBuilder(IReportBuilder):
             for category, count in audit_category_counts.items()
         ] or [("Additional checks", "0")]
         story += [statistics_chart(), Spacer(1, 5 * mm), key_value([
-            ("Affected representations", f"{counts['affected']:,}"),
-            ("Automatically repairable", f"{counts['repairable']:,}"),
-            ("Not automatically repairable", f"{counts['not_repairable']:,}"),
+            ("Geometry references found", f"{counts['affected']:,}"),
+            ("Ready to repair", f"{counts['repairable']:,}"),
             ("Successfully repaired", f"{counts['repaired']:,}"),
             ("Remaining", f"{counts['remaining']:,}"),
-        ] + classification_rows + type_rows), Spacer(1, 10 * mm),
-        Paragraph("Report Only - Review in Revit", styles["Heading2"]),
-        key_value([
-            ("Total observations", f"{report_only_count:,}"),
-            ("IFC changes from these checks", "None"),
-        ] + audit_rows), Spacer(1, 10 * mm),
-        Paragraph("Verification", styles["Heading2"]),
+        ] + _version1_element_breakdown(report)), Spacer(1, 10 * mm)]
+        if report_only_count:
+            story += [Paragraph("Report Only - Review in Revit", styles["Heading2"]),
+                      key_value([
+                          ("Total observations", f"{report_only_count:,}"),
+                          ("IFC changes from these checks", "None"),
+                      ] + audit_rows), Spacer(1, 10 * mm)]
+        story += [Paragraph("Verification", styles["Heading2"]),
         key_value([
             ("Targeted verification", "PASS" if verification_passed else "NOT COMPLETED"),
             ("Intended", report.targeted_verification.get("intended", 0)),
@@ -522,6 +556,17 @@ class HTMLReportBuilder(IReportBuilder):
             for name, values in report.classification_counts.items()
             if values.get("detected", 0)
         ) or "<tr><td colspan='6'>No missing contexts detected</td></tr>"
+        compatibility_rows = "".join(
+            (
+                f"<tr><td>{html_escape(str(item.get('signature', '')))}</td>"
+                f"<td>{html_escape(str(item.get('safety_level', '')))}</td>"
+                f"<td>{html_escape(str(item.get('internal_verification', '')))}</td>"
+                f"<td>{html_escape(str(item.get('corenet_x_viewer', '')))}</td>"
+                f"<td>{'Enabled' if item.get('production_enabled') else 'Disabled'}</td>"
+                f"<td>{html_escape(str(item.get('reason', '')))}</td></tr>"
+            )
+            for item in report.repair_signature_statuses
+        ) or "<tr><td colspan='6'>No signature policy was recorded</td></tr>"
         assessment = report.file_assessment
         ifc_sg = assessment.ifc_sg if assessment else None
         assessment_evidence = "".join(
@@ -571,6 +616,21 @@ class HTMLReportBuilder(IReportBuilder):
             ),
             audit_section("georeferencing", "Georeferencing", "Georeferencing"),
         ))
+        if not report.audit_findings:
+            audit_sections = ""
+        report_only_nav = (
+            '<a href="#additional-checks">Items to Review</a>'
+            if report_only_count else ""
+        )
+        additional_checks_section = (
+            '<section id="additional-checks"><h2>Report-Only Checks '
+            '<span class="status-badge report">REVIEW IN REVIT</span></h2>'
+            f'<div class="card review-card"><strong>{report_only_count:,}</strong> '
+            'observation(s) from space geometry, quantity information and '
+            'georeferencing. These checks did not modify the IFC. Repeated '
+            'observations are grouped below.</div></section>'
+            if report_only_count else ""
+        )
 
         def category_section(
             section_id: str, title: str, classifications: set[str],
@@ -595,25 +655,17 @@ class HTMLReportBuilder(IReportBuilder):
                 f"confidence level, evidence and proposed action.</div></section>"
             )
 
-        category_sections = "".join((
-            category_section(
-                "direct-products", "Direct Products", {"DIRECT_PRODUCT"},
-            ),
-            category_section(
-                "shape-aspects", "Shape Aspects",
-                {"SHAPE_ASPECT_PRODUCT", "SHAPE_ASPECT_REPRESENTATION_MAP"},
-            ),
-            category_section(
-                "representation-maps", "Representation Maps",
-                {"REPRESENTATION_MAP"},
-            ),
-            category_section(
-                "ambiguous-cases", "Ambiguous and Unresolved Cases",
-                {"AMBIGUOUS", "ORPHANED", "UNSUPPORTED"},
-            ),
-        ))
+        # Version 1's ordinary report is deliberately limited to direct-product
+        # findings. The classification table and repair records already provide
+        # the full supported breakdown, so do not render empty future-category
+        # panels for ShapeAspect or RepresentationMap rules.
+        category_sections = ""
         warnings = list(report.errors) + [issue.message for issue in report.validation_after]
         warnings_html = "".join(f"<li>{html_escape(item)}</li>" for item in warnings) or "<li>None recorded</li>"
+        skipped_rules_html = "".join(
+            f"<li><code>{html_escape(rule_id)}</code>: {html_escape(reason)}</li>"
+            for rule_id, reason in sorted(report.skipped_rules.items())
+        ) or "<li>None</li>"
         verification = "PASS" if report.targeted_verification.get("passed") else "NOT COMPLETED"
         unresolved_review_nav = (
             '<a href="#items-review">Unresolved Geometry</a>'
@@ -635,21 +687,21 @@ class HTMLReportBuilder(IReportBuilder):
 :root{{--bg:#f3f6fa;--card:#fff;--text:#172033;--muted:#64748b;--line:#dce3ec;--blue:#155eef;--green:#067647;--green-bg:#ecfdf3;--amber:#b54708;--amber-bg:#fffaeb;--soft:#eef4ff;--shadow:0 4px 18px #17203312}}
 [data-theme=dark]{{--bg:#0f1722;--card:#172334;--text:#edf2f7;--muted:#a3afc0;--line:#34445a;--blue:#79a8ff;--green:#70d384;--green-bg:#173b2a;--amber:#fdb022;--amber-bg:#443414;--soft:#203552;--shadow:none}}
 *{{box-sizing:border-box}}body{{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 "Segoe UI",Arial,sans-serif}}button,input,select{{font:inherit}}pre{{white-space:pre-wrap;word-break:break-word;font-size:12px}}
-header{{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--line);padding:14px 4vw;display:flex;align-items:center;gap:18px}}header h1{{font-size:18px;margin:0}}header .grow{{flex:1}}button{{border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--text);padding:8px 12px;cursor:pointer}}button:hover{{border-color:var(--blue)}}
+header{{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--line);padding:14px 4vw;display:flex;align-items:center;gap:18px}}header h1{{font-size:18px;margin:0;white-space:nowrap}}header .grow{{flex:1}}.app-version{{display:inline-block;margin-left:6px;padding:2px 7px;border-radius:999px;background:var(--soft);color:var(--blue);font-size:11px;vertical-align:middle}}button{{border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--text);padding:8px 12px;cursor:pointer}}button:hover{{border-color:var(--blue)}}
 nav{{display:flex;gap:4px;overflow:auto;padding:9px 4vw;background:var(--card);border-bottom:1px solid var(--line)}}nav a{{white-space:nowrap;color:var(--muted);text-decoration:none;padding:7px 11px;border-radius:6px}}nav a:hover{{background:var(--soft);color:var(--blue)}}
 main{{max-width:1440px;margin:auto;padding:24px 4vw 60px}}section{{scroll-margin-top:105px;margin-bottom:24px}}h2{{font-size:19px;margin:0 0 12px}}h3{{font-size:14px;margin:18px 0 8px}}.grid{{display:grid;grid-template-columns:repeat(5,minmax(145px,1fr));gap:12px}}.category-grid{{grid-template-columns:repeat(4,minmax(145px,1fr))}}.category-note{{margin-top:12px;color:var(--muted)}}.card{{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;box-shadow:var(--shadow)}}.kpi strong{{display:block;font-size:25px}}.kpi span,.muted{{color:var(--muted)}}.pass{{color:var(--green)}}.outcome-callouts{{display:grid;grid-template-columns:repeat(4,minmax(190px,1fr));gap:12px;margin:14px 0}}.outcome-card{{border:1px solid var(--line);border-radius:11px;padding:16px;background:var(--card)}}.outcome-card.fixed{{background:var(--green-bg);border-color:#abefc6}}.outcome-card.review{{background:var(--amber-bg);border-color:#fedf89}}.outcome-card strong{{display:block;font-size:28px;margin:7px 0 2px}}.outcome-card h3{{font-size:14px;margin:0 0 5px}}.outcome-card p{{color:var(--muted);margin:0;font-size:12px}}.status-badge{{display:inline-block;border-radius:999px;padding:3px 8px;font-size:10px;font-weight:800;letter-spacing:.03em;vertical-align:middle;white-space:nowrap}}.status-badge.fixed{{color:var(--green);background:var(--green-bg);border:1px solid #abefc6}}.status-badge.report{{color:var(--amber);background:var(--amber-bg);border:1px solid #fedf89}}.review-card{{background:var(--amber-bg);border-color:#fedf89}}.fixed-card{{background:var(--green-bg);border-color:#abefc6}}
 .two{{display:grid;grid-template-columns:1fr 1fr;gap:14px}}dl{{display:grid;grid-template-columns:160px 1fr;gap:8px;margin:0}}dt{{color:var(--muted)}}dd{{margin:0;overflow-wrap:anywhere}}.outcome-grid{{display:grid;grid-template-columns:150px minmax(360px,1fr);gap:24px;align-items:center;min-height:150px}}.outcome-bars{{min-width:0}}.bar-row{{display:grid;grid-template-columns:minmax(190px,230px) minmax(120px,1fr) 72px;gap:12px;align-items:center;margin:12px 0}}.bar-row b{{text-align:right;font-variant-numeric:tabular-nums}}.bar{{height:9px;background:var(--soft);border-radius:9px;overflow:hidden}}.bar i{{display:block;height:100%;background:var(--blue)}}.donut{{width:112px;height:112px;border-radius:50%;margin:auto;background:conic-gradient(var(--green) 0 var(--repaired),#f59e0b var(--repaired) 100%);display:grid;place-items:center}}.donut:after{{content:attr(data-label);width:76px;height:76px;border-radius:50%;background:var(--card);display:grid;place-items:center;text-align:center;font-weight:700;line-height:1.2;white-space:pre-line}}
-.tools{{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}}input,select{{border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--text);padding:8px 10px}}input{{min-width:260px;flex:1}}.table-wrap{{overflow:auto;border:1px solid var(--line);border-radius:9px}}table{{border-collapse:collapse;width:100%;background:var(--card)}}th,td{{text-align:left;border-bottom:1px solid var(--line);padding:9px 10px;vertical-align:top;white-space:nowrap}}th{{background:var(--soft);cursor:pointer;position:sticky;top:0}}td.wrap{{white-space:normal;min-width:260px}}tr:hover td{{background:var(--soft)}}.pager{{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:10px}}code{{font-family:Consolas,monospace}}details{{border-top:1px solid var(--line);padding:10px 0}}.copy{{padding:2px 6px;font-size:12px}}footer{{color:var(--muted);text-align:center;padding:25px}}.audit-summary{{margin-bottom:10px;color:var(--muted)}}.audit-summary strong{{color:var(--text)}}.audit-table-controls{{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-top:10px}}.audit-table-controls label{{color:var(--muted)}}.audit-table-controls .pager{{margin-top:0}}.audit-section td:nth-child(4),.audit-section td:nth-child(5),.audit-section td:nth-child(6){{white-space:normal;min-width:220px}}.audit-entities{{min-width:260px}}.audit-entities details{{border:0;padding:0}}.audit-entities summary{{cursor:pointer;color:var(--blue);white-space:nowrap}}.entity-grid{{display:flex;flex-wrap:wrap;gap:5px;max-width:420px;margin:9px 0}}.entity-chip{{background:var(--soft);border-radius:5px;padding:3px 7px;font:12px Consolas,monospace}}.entity-pager{{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:12px}}.entity-pager button{{padding:4px 7px;font-size:12px}}
+.tools{{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}}input,select{{border:1px solid var(--line);border-radius:7px;background:var(--card);color:var(--text);padding:8px 10px}}input{{min-width:300px;flex:1}}.table-wrap{{overflow:auto;border:1px solid var(--line);border-radius:9px}}.record-top-scroll{{overflow-x:scroll;overflow-y:hidden;height:18px;margin-bottom:5px;border:1px solid var(--line);border-radius:7px;background:var(--soft);scrollbar-gutter:stable}}.record-top-scroll>div{{height:1px}}.record-table-wrap{{overflow-x:scroll;scrollbar-gutter:stable}}#recordsTable{{min-width:1420px}}#recordsTable th:nth-child(1){{width:110px}}#recordsTable th:nth-child(2){{width:110px}}#recordsTable th:nth-child(3){{width:210px}}#recordsTable th:nth-child(4){{width:150px}}#recordsTable th:nth-child(5){{min-width:260px}}#recordsTable th:nth-child(6){{width:190px}}#recordsTable th:nth-child(7){{min-width:300px}}table{{border-collapse:collapse;width:100%;background:var(--card)}}th,td{{text-align:left;border-bottom:1px solid var(--line);padding:9px 10px;vertical-align:top;white-space:nowrap}}th{{background:var(--soft);position:sticky;top:0}}th[data-sort]{{cursor:pointer;user-select:none}}th[data-sort]:hover{{color:var(--blue)}}.sort-indicator{{display:inline-block;width:14px;margin-left:5px;color:var(--muted);font-weight:700}}th[aria-sort="ascending"] .sort-indicator,th[aria-sort="descending"] .sort-indicator{{color:var(--blue)}}td.wrap{{white-space:normal;min-width:260px}}tr:hover td{{background:var(--soft)}}.pager{{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:10px}}code{{font-family:Consolas,monospace}}details{{border-top:1px solid var(--line);padding:10px 0}}.record-details{{border:0;padding:0}}.record-details summary{{cursor:pointer;color:var(--blue);font-weight:600}}.copy{{padding:2px 6px;font-size:12px}}footer{{color:var(--muted);text-align:center;padding:25px}}.audit-summary{{margin-bottom:10px;color:var(--muted)}}.audit-summary strong{{color:var(--text)}}.audit-table-controls{{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-top:10px}}.audit-table-controls label{{color:var(--muted)}}.audit-table-controls .pager{{margin-top:0}}.audit-section td:nth-child(4),.audit-section td:nth-child(5),.audit-section td:nth-child(6){{white-space:normal;min-width:220px}}.audit-entities{{min-width:260px}}.audit-entities details{{border:0;padding:0}}.audit-entities summary{{cursor:pointer;color:var(--blue);white-space:nowrap}}.entity-grid{{display:flex;flex-wrap:wrap;gap:5px;max-width:420px;margin:9px 0}}.entity-chip{{background:var(--soft);border-radius:5px;padding:3px 7px;font:12px Consolas,monospace}}.entity-pager{{display:flex;align-items:center;gap:7px;color:var(--muted);font-size:12px}}.entity-pager button{{padding:4px 7px;font-size:12px}}
 @media(max-width:900px){{.grid,.category-grid,.outcome-callouts{{grid-template-columns:repeat(2,1fr)}}.two{{grid-template-columns:1fr}}.outcome-grid{{grid-template-columns:1fr}}dl{{grid-template-columns:120px 1fr}}.bar-row{{grid-template-columns:170px 1fr 65px}}}}
 </style></head>
-<body><header><h1>{APP_NAME}</h1><span class="muted">Repair known IFC+SG geometry-reference issues from Autodesk Revit 2025 and Revit 2026 before CORENET X submission.</span><span class="grow"></span></header>
-<nav><a href="#overview">Summary</a><a href="#records">Repair Records</a>{unresolved_review_nav}<a href="#additional-checks">Report-Only Checks</a><a href="#verification">Verification</a><a href="#diagnostics">Technical Details</a></nav>
+<body><header><h1>{APP_NAME}<span class="app-version">v{APP_VERSION}</span></h1><span class="muted">Repairs missing IfcShapeRepresentation context references in supported Revit 2025/2026 IFC+SG exports. This IFC4 schema non-compliance can cause elements to be missing during CORENET X model processing.</span><span class="grow"></span></header>
+<nav><a href="#overview">Summary</a><a href="#records">Repairs Applied</a>{unresolved_review_nav}{report_only_nav}<a href="#verification">Verification</a><a href="#diagnostics">Technical Details</a></nav>
 <main>
 <section id="overview"><h2>Summary</h2><div class="card"><p>IFC+SG Repair Assistant helps BIM users detect and repair a known geometry-reference issue found in IFC+SG files exported from Autodesk Revit 2025 and Revit 2026.</p><p>The application restores missing IFC geometry references without changing the model geometry, helping prepare the IFC for the next stage of CORENET X submission.</p></div>
 <div class="outcome-callouts">
-<div class="outcome-card fixed"><span class="status-badge fixed">REPAIRED IN IFC</span><strong>{counts['repaired']:,}</strong><h3>Repaired and verified</h3><p>These geometry references were changed in the repaired IFC.</p></div>
-<div class="outcome-card review"><span class="status-badge report">NOT REPAIRED</span><strong>{counts['remaining']:,}</strong><h3>Unable to repair automatically</h3><p>No IFC change was applied. Review these geometry items in Revit.</p></div>
-<div class="outcome-card review"><span class="status-badge report">REPORT ONLY</span><strong>{report_only_count:,}</strong><h3>Review or validate in Revit</h3><p>Additional audit observations only. No IFC change was applied.</p></div>
+<div class="outcome-card fixed"><span class="status-badge fixed">SUPPORTED</span><strong>{counts['affected']:,}</strong><h3>Direct product geometry references</h3><p>Version 1 scans supported direct-product ownership only.</p></div>
+<div class="outcome-card fixed"><span class="status-badge fixed">READY</span><strong>{counts['repairable']:,}</strong><h3>Ready to repair</h3><p>Each correction has one unique compatible project context.</p></div>
+<div class="outcome-card review"><span class="status-badge report">REMAINING</span><strong>{counts['remaining']:,}</strong><h3>Supported items remaining</h3><p>No automatic change is applied where the correction cannot be proven.</p></div>
 <div class="outcome-card {'fixed' if verification == 'PASS' else 'review'}"><span class="status-badge {'fixed' if verification == 'PASS' else 'report'}">{'VERIFIED' if verification == 'PASS' else 'CHECK REQUIRED'}</span><strong>{'PASS' if verification == 'PASS' else '—'}</strong><h3>IFC verification</h3><p>{'All applied repairs passed targeted verification.' if verification == 'PASS' else 'Repair verification was not completed.'}</p></div>
 </div>
 <div class="grid">
@@ -661,7 +713,7 @@ main{{max-width:1440px;margin:auto;padding:24px 4vw 60px}}section{{scroll-margin
 <div class="two" style="margin-top:14px"><div class="card"><h3>File information</h3><dl>
 <dt>Input IFC</dt><dd>{html_escape(Path(report.source).name)}</dd><dt>Output IFC</dt><dd>{html_escape(Path(report.output).name if report.output else 'Not written')}</dd>
 <dt>Schema</dt><dd>{html_escape(report.schema or 'Unknown')}</dd><dt>Input size</dt><dd>{format_bytes(report.input_size)}</dd><dt>Output size</dt><dd>{format_bytes(report.output_size)}</dd><dt>Total duration</dt><dd>{_duration(report):.3f} seconds</dd></dl></div>
-<div class="card"><h3>Repair scope</h3><dl><dt>Rule</dt><dd>{html_escape(report.active_rule_id)}</dd><dt>Version</dt><dd>{html_escape(report.active_rule_version)}</dd><dt>Mode</dt><dd>{html_escape(report.repair_mode or 'Audit')}</dd><dt>Representations</dt><dd>Body / SweptSolid, Body / Tessellation and FootPrint / Curve2D</dd><dt>Ownership</dt><dd>Direct products, shape aspects and representation maps</dd></dl></div></div></section>
+<div class="card"><h3>Repair scope</h3><dl><dt>Rule</dt><dd>{html_escape(report.active_rule_id)}</dd><dt>Version</dt><dd>{html_escape(report.active_rule_version)}</dd><dt>Mode</dt><dd>{html_escape(report.repair_mode or 'Audit')}</dd><dt>Version 1 repair</dt><dd>Direct product Body / SweptSolid, Body / Tessellation and FootPrint / Curve2D representations only.</dd><dt>Outside Version 1</dt><dd>Missing geometry references under IfcShapeAspect and IfcRepresentationMap were not scanned or modified.</dd></dl></div></div></section>
 <section id="file-assessment"><h2>IFC+SG File Assessment</h2><div class="two">
 <div class="card"><dl><dt>Classification</dt><dd>{html_escape(ifc_sg.classification.value if ifc_sg else 'Not assessed')}</dd><dt>Likely authoring tool</dt><dd>{html_escape(ifc_sg.likely_exporter if ifc_sg else 'Unknown')}</dd><dt>Schema</dt><dd>{html_escape(assessment.schema if assessment and assessment.schema else report.schema or 'Unknown')}</dd><dt>File size category</dt><dd>{html_escape(assessment.size_category if assessment else 'Not assessed')}</dd><dt>Processing strategy</dt><dd>{html_escape(assessment.strategy.value if assessment else 'Not assessed')}</dd></dl></div>
 <div class="card"><h3>Evidence and warnings</h3><ul>{assessment_evidence}</ul></div></div></section>
@@ -675,29 +727,35 @@ main{{max-width:1440px;margin:auto;padding:24px 4vw 60px}}section{{scroll-margin
 <section id="classification"><h2>Classification</h2><div class="card"><div class="table-wrap"><table><thead><tr><th>Classification</th><th>Detected</th><th>High confidence</th><th>Proposed auto-repair</th><th>Repaired</th><th>Remaining</th></tr></thead><tbody>{classification_rows}</tbody></table></div></div></section>
 {category_sections}
 {unresolved_review_section}
-<section id="additional-checks"><h2>Report-Only Checks <span class="status-badge report">REVIEW IN REVIT</span></h2><div class="card review-card"><strong>{report_only_count:,}</strong> observation(s) from space geometry, quantity information and georeferencing. These checks did not modify the IFC. Repeated observations are grouped below.</div></section>
+{additional_checks_section}
 {audit_sections}
-<section id="records"><h2>Geometry Repair Records <span class="status-badge fixed">REPAIRED RECORDS ARE GREEN</span></h2><div class="card fixed-card" style="margin-bottom:10px"><strong>{counts['repaired']:,}</strong> record(s) were repaired in the output IFC. Records that were not changed are marked <span class="status-badge report">REVIEW IN REVIT</span>.</div><div class="card"><div class="tools"><input id="search" placeholder="Search STEP ID, GlobalId, name, representation or evidence"><select id="classificationFilter"><option value="">All classifications</option></select><select id="confidenceFilter"><option value="">All confidence levels</option></select><select id="typeFilter"><option value="">All representations</option></select><select id="verifyFilter"><option value="">All verification results</option></select><button id="next">Jump to next</button><button id="csv">Export filtered CSV</button><button id="json">Export filtered JSON</button></div>
-<div class="table-wrap"><table><thead><tr><th>Outcome</th><th data-sort="step_id">STEP ID</th><th data-sort="global_id">GlobalId</th><th data-sort="element">Element</th><th data-sort="name">Name</th><th data-sort="representation">Representation</th><th data-sort="old_context">Old Context</th><th data-sort="new_context">New Context</th><th data-sort="rule">Rule</th><th data-sort="confidence">Confidence</th><th data-sort="verification">Verification</th><th>Details</th></tr></thead><tbody id="rows"></tbody></table></div><div class="pager"><button id="prev">Previous</button><span id="page"></span><button id="pageNext">Next</button></div></div></section>
+<section id="records"><h2>Geometry Repair Records <span class="status-badge fixed">REPAIRED RECORDS ARE GREEN</span></h2><div class="card fixed-card" style="margin-bottom:10px"><strong>{counts['repaired']:,}</strong> record(s) were repaired in the output IFC. Records that were not changed are marked <span class="status-badge report">REVIEW IN REVIT</span>.</div><div class="card"><div class="tools"><input id="search" placeholder="Search STEP ID, GlobalId, element or name"><select id="elementFilter"><option value="">All elements</option></select><select id="representationFilter"><option value="">All representations</option></select><button id="csv">Export filtered CSV</button></div>
+<div id="recordsTopScroll" class="record-top-scroll" aria-label="Top horizontal table scrollbar"><div id="recordsTopScrollInner"></div></div><div id="recordsTableWrap" class="table-wrap record-table-wrap"><table id="recordsTable"><thead><tr><th data-sort="outcome" aria-sort="none">Outcome<span class="sort-indicator">&#8597;</span></th><th data-sort="step_id" aria-sort="ascending">STEP ID<span class="sort-indicator">&#8593;</span></th><th data-sort="global_id" aria-sort="none">GlobalId<span class="sort-indicator">&#8597;</span></th><th data-sort="element" aria-sort="none">Element<span class="sort-indicator">&#8597;</span></th><th data-sort="name" aria-sort="none">Name<span class="sort-indicator">&#8597;</span></th><th data-sort="representation" aria-sort="none">Representation<span class="sort-indicator">&#8597;</span></th><th data-sort="details" aria-sort="none">Details<span class="sort-indicator">&#8597;</span></th></tr></thead><tbody id="rows"></tbody></table></div><div class="pager"><button id="prev">Previous</button><span id="page"></span><button id="pageNext">Next</button></div></div></section>
 <section id="performance"><h2>Performance</h2><div class="two"><div class="card"><h3>Execution timeline</h3><table><tbody>{stage_rows}</tbody></table></div><div class="card"><h3>Duration comparison</h3>{''.join(f'''<div class="bar-row"><span>{html_escape(k.replace('_',' ').title())}</span><div class="bar"><i style="width:{v/max(.001,_duration(report))*100:.1f}%"></i></div><b>{v:.2f}s</b></div>''' for k,v in report.durations.items())}</div></div></section>
 <section id="verification"><h2>Verification</h2><div class="two"><div class="card"><h3>Targeted output verification</h3><dl><dt>Result</dt><dd>{verification}</dd><dt>Intended changes</dt><dd>{report.targeted_verification.get('intended', 0)}</dd><dt>Verified changes</dt><dd>{report.targeted_verification.get('verified', 0)}</dd><dt>Targeted issues remaining</dt><dd>{report.targeted_verification.get('remaining', counts['remaining'])}</dd></dl></div><div class="card"><h3>Unexpected-change audit</h3><dl><dt>Expected modified records</dt><dd>{report.change_audit.get('expected_modified_records', 'Not run')}</dd><dt>Actual modified records</dt><dd>{report.change_audit.get('actual_modified_records', 'Not run')}</dd><dt>Unexpected records</dt><dd>{report.change_audit.get('unexpected_modified_records', 'Not run')}</dd></dl></div></div></section>
-<section id="diagnostics"><h2>Technical Details</h2><div class="two"><div class="card"><h3>Warnings and exceptions</h3><ul>{warnings_html}</ul><h3>Verification messages</h3><ul>{''.join(f'<li>{html_escape(str(m))}</li>' for m in report.targeted_verification.get('messages', [])) or '<li>None recorded</li>'}</ul></div><div class="card"><h3>Execution details</h3><dl><dt>Temporary output</dt><dd>{'Cleaned up' if not report.temporary_path else 'Internal temporary file used'}</dd><dt>Output size</dt><dd>{format_bytes(report.output_size)}</dd><dt>Selected rules</dt><dd>{html_escape(', '.join(report.selected_rules) or 'None')}</dd><dt>Skipped rules</dt><dd>{len(report.skipped_rules):,}</dd><dt>Full validation</dt><dd>{'Performed' if report.full_validation_performed else 'Not requested'}</dd><dt>Expected changed records</dt><dd>{report.change_audit.get('expected_modified_records','Not run')}</dd><dt>Actual changed records</dt><dd>{report.change_audit.get('actual_modified_records','Not run')}</dd><dt>Unexpected changes</dt><dd>{report.change_audit.get('unexpected_modified_records','Not run')}</dd><dt>Write throughput</dt><dd>{format_bytes(int(report.system_diagnostics.get('write_throughput_bytes_per_second') or 0))}/s</dd><dt>Peak working set</dt><dd>{format_bytes(int(report.system_diagnostics.get('process_peak_working_set_bytes') or 0))}</dd><dt>Disk free</dt><dd>{format_bytes(int(report.system_diagnostics.get('disk_free_bytes') or report.system_diagnostics.get('available_free_bytes') or 0))}</dd></dl></div></div></section>
+<section id="diagnostics"><h2>Technical Details</h2><div class="two"><div class="card"><h3>Warnings and exceptions</h3><ul>{warnings_html}</ul><h3>Verification messages</h3><ul>{''.join(f'<li>{html_escape(str(m))}</li>' for m in report.targeted_verification.get('messages', [])) or '<li>None recorded</li>'}</ul><h3>Skipped rules</h3><ul>{skipped_rules_html}</ul></div><div class="card"><h3>Execution details</h3><dl><dt>Temporary output</dt><dd>{'Cleaned up' if not report.temporary_path else 'Internal temporary file used'}</dd><dt>Output size</dt><dd>{format_bytes(report.output_size)}</dd><dt>Selected rules</dt><dd>{html_escape(', '.join(report.selected_rules) or 'None')}</dd><dt>Skipped rules</dt><dd>{len(report.skipped_rules):,}</dd><dt>Full validation</dt><dd>{'Performed' if report.full_validation_performed else 'Not requested'}</dd><dt>Expected changed records</dt><dd>{report.change_audit.get('expected_modified_records','Not run')}</dd><dt>Actual changed records</dt><dd>{report.change_audit.get('actual_modified_records','Not run')}</dd><dt>Unexpected changes</dt><dd>{report.change_audit.get('unexpected_modified_records','Not run')}</dd><dt>Write throughput</dt><dd>{format_bytes(int(report.system_diagnostics.get('write_throughput_bytes_per_second') or 0))}/s</dd><dt>Peak working set</dt><dd>{format_bytes(int(report.system_diagnostics.get('process_peak_working_set_bytes') or 0))}</dd><dt>Disk free</dt><dd>{format_bytes(int(report.system_diagnostics.get('disk_free_bytes') or report.system_diagnostics.get('available_free_bytes') or 0))}</dd></dl></div></div></section>
 <section id="settings"><h2>Settings</h2><div class="card"><dl><dt>Application</dt><dd>{APP_NAME} v{APP_VERSION}</dd><dt>Rule</dt><dd>{html_escape(report.active_rule_id)} v{html_escape(report.active_rule_version)}</dd><dt>Repair mode</dt><dd>{html_escape(report.repair_mode or 'Scan only')}</dd><dt>Python</dt><dd>{html_escape(report.environment.get('python_version','Unknown'))}</dd><dt>IfcOpenShell</dt><dd>{html_escape(report.environment.get('ifcopenshell_version','Unknown'))}</dd></dl></div></section>
 </main><footer>{html_escape(report.disclaimer)}<br>Generated by {APP_NAME} v{APP_VERSION} | {html_escape(report.finished_at or '')}</footer>
 <script>const records={records_json};const auditGroups={audit_groups_json};let filtered=[...records],page=1,sortKey='step_id',ascending=true;const pageSize=50;
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}}[c]));
 const copy=v=>navigator.clipboard?navigator.clipboard.writeText(String(v??'')):void 0;
-function options(id,key){{const el=document.getElementById(id);[...new Set(records.map(r=>r[key]).filter(Boolean))].sort().forEach(v=>el.insertAdjacentHTML('beforeend',`<option>${{esc(v)}}</option>`))}}options('classificationFilter','classification');options('confidenceFilter','confidence_level');options('typeFilter','representation');options('verifyFilter','verification');
-function apply(){{const q=document.getElementById('search').value.toLowerCase(),c=document.getElementById('classificationFilter').value,l=document.getElementById('confidenceFilter').value,t=document.getElementById('typeFilter').value,v=document.getElementById('verifyFilter').value;filtered=records.filter(r=>(!q||Object.values(r).join(' ').toLowerCase().includes(q))&&(!c||r.classification===c)&&(!l||r.confidence_level===l)&&(!t||r.representation===t)&&(!v||r.verification===v));filtered.sort((a,b)=>{{let x=a[sortKey]??'',y=b[sortKey]??'';return(x>y?1:x<y?-1:0)*(ascending?1:-1)}});page=1;render()}}
-function render(){{const pages=Math.max(1,Math.ceil(filtered.length/pageSize));page=Math.min(page,pages);const rows=filtered.slice((page-1)*pageSize,page*pageSize);document.getElementById('rows').innerHTML=rows.map((r,i)=>`<tr id="record-${{i}}"><td>${{r.repaired?'<span class="status-badge fixed">REPAIRED</span>':'<span class="status-badge report">REVIEW IN REVIT</span>'}}</td><td><code>#${{esc(r.step_id)}}</code> <button class="copy" data-copy="${{esc(r.step_id)}}">Copy</button></td><td><code>${{esc(r.global_id)}}</code> <button class="copy" data-copy="${{esc(r.global_id)}}">Copy</button></td><td>${{esc(r.element)}}</td><td>${{esc(r.name)}}</td><td>${{esc(r.representation)}} (#${{esc(r.representation_step_id)}})</td><td>${{esc(r.old_context)}}</td><td>${{esc(r.new_context)}}</td><td>${{esc(r.rule)}}</td><td>${{esc(r.confidence)}}%</td><td>${{esc(r.verification)}}</td><td class="wrap"><details><summary>Expand</summary><b>Classification:</b> ${{esc(r.classification)}}<br><b>Confidence:</b> ${{esc(r.confidence_level)}}<br><b>Proposed action:</b> ${{esc(r.proposed_action)}}<br><b>Ultimate products:</b> ${{esc(r.ultimate_product_count)}} (${{esc(JSON.stringify(r.ultimate_product_classes))}})<br><b>Map usages:</b> ${{esc(r.usage_count)}}<br><b>Schema status:</b> ${{esc(r.schema_status)}}<br><b>Rendering risk:</b> ${{esc(r.rendering_risk)}}<br><b>Downstream risk:</b> ${{esc(r.downstream_processing_risk)}}<br><b>Priority:</b> ${{esc(r.repair_priority)}}<br><b>Status:</b> ${{esc(r.status)}}<br><b>Items:</b> ${{esc(r.item_count)}} (${{esc(r.item_classes)}})<br><b>Evidence:</b> ${{esc(r.evidence)}}<br><b>Decision trace:</b><pre>${{esc(JSON.stringify(r.decision_trace,null,2))}}</pre></details></td></tr>`).join('')||'<tr><td colspan="12">No matching repair records.</td></tr>';document.getElementById('page').textContent=`Page ${{page}} of ${{pages}} | ${{filtered.length}} records`;document.querySelectorAll('[data-copy]').forEach(b=>b.onclick=()=>copy(b.dataset.copy))}}
-['search','classificationFilter','confidenceFilter','typeFilter','verifyFilter'].forEach(id=>document.getElementById(id).addEventListener(id==='search'?'input':'change',apply));document.querySelectorAll('[data-sort]').forEach(h=>h.onclick=()=>{{ascending=sortKey===h.dataset.sort?!ascending:true;sortKey=h.dataset.sort;apply()}});document.getElementById('prev').onclick=()=>{{page=Math.max(1,page-1);render()}};document.getElementById('pageNext').onclick=()=>{{page++;render()}};document.getElementById('next').onclick=()=>{{const row=document.querySelector('#rows tr');if(row)row.scrollIntoView({{behavior:'smooth',block:'center'}})}};
+const outcome=r=>r.repaired?'Repaired':r.safety_level==='Experimental'?'Experimental':'Review only';
+const detailsText=r=>`Repair type: ${{r.representation||'-'}}; Result: ${{r.verification||r.status||'-'}}; Evidence: ${{r.evidence||'-'}}`;
+const sortValue=(r,key)=>key==='outcome'?outcome(r):key==='details'?detailsText(r):(r[key]??'');
+function options(id,key){{const el=document.getElementById(id);[...new Set(records.map(r=>r[key]).filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b))).forEach(v=>el.insertAdjacentHTML('beforeend',`<option value="${{esc(v)}}">${{esc(v)}}</option>`))}}options('elementFilter','element');options('representationFilter','representation');
+function updateSortIndicators(){{document.querySelectorAll('#recordsTable th[data-sort]').forEach(h=>{{const active=h.dataset.sort===sortKey;h.setAttribute('aria-sort',active?(ascending?'ascending':'descending'):'none');h.querySelector('.sort-indicator').textContent=active?(ascending?'\u2191':'\u2193'):'\u2195'}})}}
+function sortRecords(){{filtered.sort((a,b)=>{{let x=sortValue(a,sortKey),y=sortValue(b,sortKey);if(typeof x==='string')x=x.toLocaleLowerCase();if(typeof y==='string')y=y.toLocaleLowerCase();return(x>y?1:x<y?-1:0)*(ascending?1:-1)}});updateSortIndicators()}}
+function apply(){{const q=document.getElementById('search').value.trim().toLocaleLowerCase(),element=document.getElementById('elementFilter').value,representation=document.getElementById('representationFilter').value;filtered=records.filter(r=>{{const searchable=[r.step_id,r.global_id,r.element,r.name,r.representation,r.evidence].join(' ').toLocaleLowerCase();return(!q||searchable.includes(q))&&(!element||r.element===element)&&(!representation||r.representation===representation)}});sortRecords();page=1;render()}}
+function syncRecordScrollWidth(){{const wrap=document.getElementById('recordsTableWrap'),top=document.getElementById('recordsTopScroll'),inner=document.getElementById('recordsTopScrollInner');inner.style.width=`${{document.getElementById('recordsTable').scrollWidth}}px`;if(top.scrollLeft!==wrap.scrollLeft)top.scrollLeft=wrap.scrollLeft}}
+function render(){{const pages=Math.max(1,Math.ceil(filtered.length/pageSize));page=Math.min(page,pages);const rows=filtered.slice((page-1)*pageSize,page*pageSize);document.getElementById('rows').innerHTML=rows.map((r,i)=>`<tr id="record-${{i}}"><td>${{r.repaired?'<span class="status-badge fixed">REPAIRED</span>':r.safety_level==='Experimental'?'<span class="status-badge report">EXPERIMENTAL</span>':'<span class="status-badge report">REVIEW ONLY</span>'}}</td><td><code>#${{esc(r.step_id)}}</code> <button class="copy" data-copy="${{esc(r.step_id)}}">Copy</button></td><td><code>${{esc(r.global_id)}}</code> <button class="copy" data-copy="${{esc(r.global_id)}}">Copy</button></td><td>${{esc(r.element)}}</td><td>${{esc(r.name)}}</td><td>${{esc(r.representation)}}</td><td class="wrap"><details class="record-details"><summary>View details</summary><b>Repair type:</b> ${{esc(r.representation)}}<br><b>Representation STEP ID:</b> #${{esc(r.representation_step_id)}}<br><b>Result:</b> ${{esc(r.verification||r.status)}}<br><b>Context reference:</b> ${{r.old_context==null?'Missing':'#'+esc(r.old_context)}} &rarr; ${{r.new_context==null?'No change':'#'+esc(r.new_context)}}<br><b>Representation items:</b> ${{esc(r.item_count)}} (${{esc(r.item_classes)}})<br><b>Evidence:</b> ${{esc(r.evidence)}}</details></td></tr>`).join('')||'<tr><td colspan="7">No matching repair records.</td></tr>';document.getElementById('page').textContent=`Page ${{page}} of ${{pages}} | ${{filtered.length}} records`;document.querySelectorAll('[data-copy]').forEach(b=>b.onclick=()=>copy(b.dataset.copy));requestAnimationFrame(syncRecordScrollWidth)}}
+['search','elementFilter','representationFilter'].forEach(id=>document.getElementById(id).addEventListener(id==='search'?'input':'change',apply));document.querySelectorAll('#recordsTable th[data-sort]').forEach(h=>h.onclick=()=>{{ascending=sortKey===h.dataset.sort?!ascending:true;sortKey=h.dataset.sort;sortRecords();page=1;render()}});document.getElementById('prev').onclick=()=>{{page=Math.max(1,page-1);render()}};document.getElementById('pageNext').onclick=()=>{{page++;render()}};const topScroll=document.getElementById('recordsTopScroll'),bottomScroll=document.getElementById('recordsTableWrap');topScroll.addEventListener('scroll',()=>{{bottomScroll.scrollLeft=topScroll.scrollLeft}});bottomScroll.addEventListener('scroll',()=>{{topScroll.scrollLeft=bottomScroll.scrollLeft}});window.addEventListener('resize',syncRecordScrollWidth);
 function download(name,type,text){{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{{type}}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}}
-document.getElementById('json').onclick=()=>download('{html_escape(Path(report.source).stem)}_repair_records.json','application/json',JSON.stringify(filtered,null,2));document.getElementById('csv').onclick=()=>{{const keys=Object.keys(records[0]||{{}}),quote=v=>'"'+String(v??'').replaceAll('"','""')+'"';download('{html_escape(Path(report.source).stem)}_repair_records.csv','text/csv;charset=utf-8','\\ufeff'+[keys.join(','),...filtered.map(r=>keys.map(k=>quote(r[k])).join(','))].join('\\r\\n'))}};
+document.getElementById('csv').onclick=()=>{{const quote=v=>'"'+String(v??'').replaceAll('"','""')+'"',columns=[['Outcome',r=>outcome(r)],['STEP ID',r=>r.step_id],['GlobalId',r=>r.global_id],['Element',r=>r.element],['Name',r=>r.name],['Representation',r=>r.representation],['Details',r=>detailsText(r)]];download('{html_escape(Path(report.source).stem)}_repair_records.csv','text/csv;charset=utf-8','\\ufeff'+[columns.map(c=>quote(c[0])).join(','),...filtered.map(r=>columns.map(c=>quote(c[1](r))).join(','))].join('\\r\\n'))}};
 const auditStates={{}};
 function renderAuditEntities(groupId,requestedPage=1){{const group=auditGroups[groupId],target=document.getElementById(`audit-entities-${{groupId}}`);if(!group||!target)return;const size=50,pages=Math.max(1,Math.ceil(group.entity_ids.length/size)),entityPage=Math.max(1,Math.min(requestedPage,pages)),ids=group.entity_ids.slice((entityPage-1)*size,entityPage*size);target.dataset.page=String(entityPage);target.innerHTML=`<div class="entity-grid">${{ids.map(id=>`<span class="entity-chip">${{id==null?'No STEP ID':'#'+esc(id)}}</span>`).join('')}}</div><div class="entity-pager"><button data-entity-prev="${{groupId}}">Previous</button><span>Entity page ${{entityPage}} of ${{pages}}</span><button data-entity-next="${{groupId}}">Next</button></div>`;target.querySelector('[data-entity-prev]').onclick=()=>renderAuditEntities(groupId,entityPage-1);target.querySelector('[data-entity-next]').onclick=()=>renderAuditEntities(groupId,entityPage+1)}}
 function renderAuditSection(sectionId){{const section=document.getElementById(sectionId),state=auditStates[sectionId];if(!section||!state)return;const pages=Math.max(1,Math.ceil(state.groups.length/state.pageSize));state.page=Math.max(1,Math.min(state.page,pages));const visible=state.groups.slice((state.page-1)*state.pageSize,state.page*state.pageSize);document.getElementById(`${{sectionId}}-rows`).innerHTML=visible.map(group=>`<tr><td><code>${{esc(group.rule)}}</code></td><td><strong>${{group.count.toLocaleString()}}</strong></td><td class="audit-entities"><details data-audit-group="${{group.group_id}}"><summary>View ${{group.entity_ids.length.toLocaleString()}} entity ID(s)</summary><div id="audit-entities-${{group.group_id}}"></div></details></td><td>${{esc(group.issue)}}</td><td>${{esc(group.detail)}}</td><td>${{esc(group.submission_risk)}}</td><td><span class="status-badge report">REVIEW IN REVIT</span><br><span class="muted">No IFC change applied</span></td></tr>`).join('')||'<tr><td colspan="7">No findings in this category.</td></tr>';document.getElementById(`${{sectionId}}-page`).textContent=`Page ${{state.page}} of ${{pages}} | ${{state.groups.length}} groups`;section.querySelectorAll('details[data-audit-group]').forEach(detail=>detail.addEventListener('toggle',()=>{{if(detail.open)renderAuditEntities(Number(detail.dataset.auditGroup),1)}}))}}
 document.querySelectorAll('.audit-section').forEach(section=>{{const sectionId=section.id,category=section.dataset.auditCategory;auditStates[sectionId]={{groups:auditGroups.filter(group=>group.category===category),page:1,pageSize:25}};document.getElementById(`${{sectionId}}-page-size`).onchange=event=>{{auditStates[sectionId].pageSize=Number(event.target.value);auditStates[sectionId].page=1;renderAuditSection(sectionId)}};document.getElementById(`${{sectionId}}-prev`).onclick=()=>{{auditStates[sectionId].page--;renderAuditSection(sectionId)}};document.getElementById(`${{sectionId}}-next`).onclick=()=>{{auditStates[sectionId].page++;renderAuditSection(sectionId)}};renderAuditSection(sectionId)}});
-render();</script></body></html>"""
+sortRecords();render();</script></body></html>"""
         path.write_text(html, encoding="utf-8")
         return path
 

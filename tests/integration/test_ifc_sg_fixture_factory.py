@@ -33,9 +33,7 @@ def test_direct_and_type_owned_footprint_fixture() -> None:
         result = ACTIVE_RULE.detect(model, repair_mode="advanced")
     by_id = {item.representation_step_id: item for item in result.diagnoses}
     assert by_id[entities["direct"].id()].confidence_level.value == "HIGH"
-    mapped = by_id[entities["mapped_rep"].id()]
-    assert mapped.rule_id == "REPRESENTATION_MAP_FOOTPRINT_MISSING_CONTEXT_V1"
-    assert mapped.confidence_level.value == "HIGH"
+    assert entities["mapped_rep"].id() not in by_id
 
 
 def test_report_only_audit_fixtures() -> None:

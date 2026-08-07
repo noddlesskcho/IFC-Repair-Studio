@@ -14,6 +14,7 @@ from ifc_context_repair.ifc_sg_assessment import (
     size_category,
 )
 from ifc_context_repair.models import IfcSgClassification, ProcessingStrategy
+from ifc_context_repair.feature_flags import RepairFeatureFlags
 from ifc_context_repair.prescan import StepPrescanProfile, profile_step
 from ifc_context_repair.rules.ifc_sg import IFC_SG_RULES, IfcSgRuleContext
 
@@ -93,7 +94,7 @@ def test_registry_skips_irrelevant_rules() -> None:
     selection = IFC_SG_RULES.select(
         IfcSgRuleContext(model=None, schema="IFC4", profile=profile)
     )
-    assert "DIRECT_PRODUCT_MISSING_CONTEXT_V2" in selection.skipped
+    assert "DIRECT_PRODUCT_BODY_SWEPTSOLID_MISSING_CONTEXT_V1" in selection.skipped
     assert "IFCSPACE_BODY_AUDIT_V1" in selection.skipped
     assert "BASE_QUANTITY_AUDIT_V1" in selection.skipped
     assert any(
@@ -112,6 +113,37 @@ def test_shape_aspect_map_rule_is_registered_and_bundled() -> None:
     assert "SHAPE_ASPECT_MAP_MISSING_CONTEXT_V1" in catalog_path.read_text(
         encoding="utf-8"
     )
+
+
+def test_version1_registry_skips_indirect_rules_before_execution() -> None:
+    profile = StepPrescanProfile(
+        schema="IFC4",
+        file_size=10,
+        entity_counts={
+            "IFCSHAPEASPECT": 5,
+            "IFCREPRESENTATIONMAP": 5,
+        },
+        candidates=[object()],
+    )
+    selection = IFC_SG_RULES.select(
+        IfcSgRuleContext(model=None, schema="IFC4", profile=profile),
+        RepairFeatureFlags.version_1(),
+    )
+    selected_ids = {rule.rule_id for rule in selection.selected}
+    assert not any("SHAPE_ASPECT" in rule_id for rule_id in selected_ids)
+    assert not any("REPRESENTATION_MAP" in rule_id for rule_id in selected_ids)
+    assert selection.skipped["SHAPE_ASPECT_PRODUCT_MISSING_CONTEXT_V1"] == (
+        "Skipped because rule disabled"
+    )
+    assert selection.skipped["REPRESENTATION_MAP_MISSING_CONTEXT_V1"] == (
+        "Skipped because rule disabled"
+    )
+
+
+def test_internal_indirect_flags_require_developer_mode() -> None:
+    requested = RepairFeatureFlags(True, True, True)
+    assert requested.protected(developer_mode=False) == RepairFeatureFlags.version_1()
+    assert requested.protected(developer_mode=True) == requested
 
 
 def test_non_ifc4_is_unsupported() -> None:

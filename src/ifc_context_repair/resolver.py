@@ -23,17 +23,58 @@ class Resolution:
 def resolve_context(rep: Any, index: SemanticIndex) -> Resolution:
     """Score evidence deterministically; ties never auto-repair."""
     identifier = str(attr(rep, "RepresentationIdentifier", "") or "").casefold()
+    representation_type = str(
+        attr(rep, "RepresentationType", "") or ""
+    ).casefold()
     product = index.product_for(rep)
     scores: dict[int, int] = defaultdict(int)
     reasons: dict[int, list[str]] = defaultdict(list)
     conflicts: list[str] = []
 
+    signature = (identifier, representation_type)
+
+    def compatible(info: ContextInfo) -> bool:
+        context_identifier = str(info.identifier or "").casefold()
+        context_type = str(info.context_type or "").casefold()
+        target_view = str(info.target_view or "").upper()
+        if not info.connected_to_project or context_identifier != identifier:
+            return False
+        if signature in {("body", "sweptsolid"), ("body", "tessellation")}:
+            return (
+                context_type == "model"
+                and info.dimension == 3
+                and target_view in {"", "MODEL_VIEW"}
+            )
+        if signature == ("footprint", "curve2d"):
+            # IfcGeometricRepresentationSubContext derives its coordinate-space
+            # dimension from the parent. IFC4 exporters commonly place a
+            # semantically 2D FootPrint/Curve2D subcontext below the 3D Model
+            # context, so PLAN/MODEL view plus the exact signature is decisive.
+            return (
+                info.dimension in {2, 3}
+                and target_view in {"", "PLAN_VIEW", "MODEL_VIEW"}
+            )
+        return False
+
     eligible = {
-        cid: info for cid, info in index.context_info.items() if info.connected_to_project
+        cid: info for cid, info in index.context_info.items() if compatible(info)
     }
     if not eligible:
         return Resolution(Status.NOT_REPAIRABLE, None, 0.0,
-                          conflicts=["No representation context connected to IfcProject"])
+                          conflicts=[
+                              "No unique-signature-compatible representation context "
+                              "is connected to IfcProject"
+                          ])
+    if len(eligible) != 1:
+        return Resolution(
+            Status.AMBIGUOUS,
+            None,
+            0.65,
+            conflicts=[
+                f"{len(eligible)} compatible semantic contexts exist; exactly one is required"
+            ],
+            candidates=list(eligible.values()),
+        )
 
     # Strong evidence: valid sibling with the same identifier.
     owner = index.owner_for(rep)
@@ -49,8 +90,8 @@ def resolve_context(rep: Any, index: SemanticIndex) -> Resolution:
             reasons[cid].append("Matching valid sibling representation uses this context")
 
     # Equivalent products in this exact file.
-    signature = index.signature(rep, product)
-    observed = index.matching_contexts.get(signature, {})
+    product_signature = index.signature(rep, product)
+    observed = index.matching_contexts.get(product_signature, {})
     for cid, count in observed.items():
         if cid in eligible:
             scores[cid] += min(70, 45 + int(count) * 5)
@@ -64,7 +105,7 @@ def resolve_context(rep: Any, index: SemanticIndex) -> Resolution:
     # representation contexts describe the geometry view (for example Body or
     # FootPrint), not the owning product class. Same-file evidence is accepted
     # only for an exact identifier/type/item signature and a project-rooted context.
-    semantic_signature = signature[1:]
+    semantic_signature = product_signature[1:]
     semantic_observed = index.semantic_contexts.get(semantic_signature, {})
     for cid, count in semantic_observed.items():
         if cid in eligible:
@@ -85,7 +126,7 @@ def resolve_context(rep: Any, index: SemanticIndex) -> Resolution:
             pattern.product_class, pattern.representation_identifier,
             pattern.representation_type, pattern.item_type,
         )
-        if signature != expected_signature:
+        if product_signature != expected_signature:
             continue
         for cid, info in eligible.items():
             if ((info.identifier or "").casefold() == pattern.context_identifier and

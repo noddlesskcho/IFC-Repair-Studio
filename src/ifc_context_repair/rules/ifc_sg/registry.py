@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from .base import IfcSgRule, IfcSgRuleContext
+from ...feature_flags import RepairFeatureFlags
 
 
 @dataclass(slots=True)
@@ -23,11 +24,19 @@ class IfcSgRuleRegistry:
     def all(self) -> tuple[IfcSgRule, ...]:
         return tuple(self._rules.values())
 
-    def select(self, context: IfcSgRuleContext) -> RuleSelection:
+    def select(
+        self,
+        context: IfcSgRuleContext,
+        feature_flags: RepairFeatureFlags | None = None,
+    ) -> RuleSelection:
         selection = RuleSelection()
+        feature_flags = feature_flags or RepairFeatureFlags.version_1()
         counts = context.profile.entity_counts
         missing = len(context.profile.candidates)
         for rule in self.all():
+            if not rule.is_enabled(feature_flags):
+                selection.skipped[rule.rule_id] = "Skipped because rule disabled"
+                continue
             if not rule.is_applicable(context):
                 selection.skipped[rule.rule_id] = (
                     f"Unsupported schema {context.schema or 'unknown'}"

@@ -155,6 +155,11 @@ class Diagnosis:
     downstream_processing_risk: str = "Unknown"
     repair_priority: str = "Unknown"
     proposed_action: str = "Report only"
+    repair_signature: str = ""
+    safety_level: str = "Report Only"
+    viewer_test_status: str = "Not Tested"
+    production_enabled: bool = False
+    repair_decision_reason: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         value = asdict(self)
@@ -226,6 +231,8 @@ class RunReport:
     selected_rules: list[str] = field(default_factory=list)
     skipped_rules: dict[str, str] = field(default_factory=dict)
     rule_metadata: list[dict[str, Any]] = field(default_factory=list)
+    repair_signature_statuses: list[dict[str, Any]] = field(default_factory=list)
+    generated_outputs: list[dict[str, Any]] = field(default_factory=list)
     disclaimer: str = (
         "This application performs targeted repairs for known IFC+SG export issues. "
         "It is not a complete IFC validator or CORENET X compliance checker. "

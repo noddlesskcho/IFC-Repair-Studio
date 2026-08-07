@@ -5,11 +5,15 @@ import shutil
 import time
 import traceback
 import uuid
+import gc
+import json
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
 from .config import RepairConfig
+from .feature_flags import RepairFeatureFlags
 from .change_audit import audit_targeted_changes
 from .diagnostics import DiagnosticLogger, system_snapshot
 from .errors import CancelledError, OutputError
@@ -25,16 +29,160 @@ from .ifc_sg_assessment import build_file_assessment
 from .naming import overwrite_backup_path
 from .output_safety import cleanup_abandoned_temps, preflight_output
 from .parser import check_step_envelope, open_model, require_ifcopenshell
+from .prepared_analysis import PreparedRepairAnalysis, source_sha256
 from .reporting import write_html, write_pdf
+from .repair_safety import RepairSafetyLevel, SAFETY_REGISTRY
 from .prescan import profile_step
-from .rules import ACTIVE_RULE, RuleScanResult
+from .rules import (
+    ACTIVE_RULE,
+    EnhancedMissingShapeContextRule,
+    RuleScanResult,
+)
 from .rules.ifc_sg import IFC_SG_RULES, IfcSgRuleContext
-from .step_patch import apply_patch_plan, build_patch_plan, validate_patch_plan
+from .step_patch import (
+    apply_patch_plan,
+    build_patch_plan,
+    source_fingerprint,
+    validate_patch_plan,
+)
 from .target_verification import verify_step_envelope, verify_targeted_output
 from .telemetry import StageUpdate, Telemetry, emit
 from .validator import classify_issues, validate_schema
 
 Progress = Callable[[str, int], None]
+
+
+_SEMANTIC_COUNT_TYPES = (
+    "IfcProduct",
+    "IfcShapeRepresentation",
+    "IfcRepresentationItem",
+    "IfcRelationship",
+)
+
+
+def _quarantine_failed_output(
+    temporary: Path,
+    *,
+    source: Path,
+    output: Path,
+    stage: str,
+    error: BaseException,
+) -> tuple[Path, Path] | None:
+    """Move a non-empty failed output into a diagnostic-only directory."""
+    if not temporary.exists() or temporary.stat().st_size <= 0:
+        return None
+    diagnostic_dir = output.parent / ".ifc_repair_diagnostics"
+    diagnostic_dir.mkdir(parents=True, exist_ok=True)
+    token = uuid.uuid4().hex[:12]
+    failed_ifc = diagnostic_dir / f"{source.stem}.{token}.failed.ifc"
+    failure_json = diagnostic_dir / f"{source.stem}.{token}.failure.json"
+    shutil.move(str(temporary), str(failed_ifc))
+    failure_json.write_text(
+        json.dumps(
+            {
+                "status": "FAILED_NOT_FOR_USE",
+                "stage": stage,
+                "exception_type": type(error).__name__,
+                "message": str(error),
+                "source": str(source),
+                "requested_output": str(output),
+                "quarantined_output": str(failed_ifc),
+                "source_remains_unchanged": True,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    return failed_ifc, failure_json
+
+
+def _semantic_counts(model: Any) -> dict[str, int]:
+    counts = {"TotalEntities": sum(1 for _ in model)}
+    for entity_type in _SEMANTIC_COUNT_TYPES:
+        counts[entity_type] = len(model.by_type(entity_type))
+    counts["GeometryItems"] = counts["IfcRepresentationItem"]
+    return counts
+
+
+def _verify_semantic_reopen(
+    path: Path,
+    before_counts: dict[str, int],
+    selected: list[Diagnosis],
+) -> tuple[dict[str, Any], Any]:
+    reopened = open_model(path)
+    after_counts = _semantic_counts(reopened)
+    count_differences = {
+        key: {"before": before_counts.get(key, 0), "after": after_counts.get(key, 0)}
+        for key in sorted(set(before_counts) | set(after_counts))
+        if before_counts.get(key, 0) != after_counts.get(key, 0)
+    }
+    target_errors: list[str] = []
+    for item in selected:
+        expected = item.proposed_context
+        try:
+            representation = reopened.by_id(item.representation_step_id)
+            actual_context = representation.ContextOfItems
+        except Exception as exc:
+            target_errors.append(
+                f"#{item.representation_step_id}: cannot reopen target ({exc})"
+            )
+            continue
+        if actual_context is None or expected is None:
+            target_errors.append(
+                f"#{item.representation_step_id}: repaired context is missing"
+            )
+            continue
+        if int(actual_context.id()) != expected.step_id:
+            target_errors.append(
+                f"#{item.representation_step_id}: expected context "
+                f"#{expected.step_id}, found #{actual_context.id()}"
+            )
+        if not actual_context.is_a() in {
+            "IfcGeometricRepresentationContext",
+            "IfcGeometricRepresentationSubContext",
+        }:
+            target_errors.append(
+                f"#{item.representation_step_id}: replacement is not a geometric context"
+            )
+        actual_identifier = str(
+            getattr(actual_context, "ContextIdentifier", "") or ""
+        ).casefold()
+        expected_identifier = str(expected.identifier or "").casefold()
+        if (
+            expected_identifier
+            and actual_identifier
+            and actual_identifier != expected_identifier
+        ):
+            target_errors.append(
+                f"#{item.representation_step_id}: expected semantic context "
+                f"{expected.identifier}, found "
+                f"{getattr(actual_context, 'ContextIdentifier', None)}"
+            )
+        try:
+            dimension = getattr(actual_context, "CoordinateSpaceDimension", None)
+        except Exception:
+            # CoordinateSpaceDimension is derived for subcontexts and some
+            # minimal IfcOpenShell runtimes cannot evaluate derived rules.
+            dimension = None
+        if (
+            expected.dimension is not None
+            and dimension is not None
+            and dimension != expected.dimension
+        ):
+            target_errors.append(
+                f"#{item.representation_step_id}: expected context dimension "
+                f"{expected.dimension}, found {dimension}"
+            )
+    passed = not count_differences and not target_errors
+    return ({
+        "passed": passed,
+        "reopen_passed": True,
+        "before_counts": before_counts,
+        "after_counts": after_counts,
+        "count_differences": count_differences,
+        "target_errors": target_errors,
+    }, reopened)
 
 
 def _environment() -> dict[str, str]:
@@ -88,7 +236,14 @@ def _analyse_loaded(
     telemetry: Telemetry | None = None,
     max_file_size_gb: float | None = None,
     repair_mode: str = "safe",
+    feature_flags: RepairFeatureFlags | None = None,
+    developer_mode: bool = False,
 ) -> tuple[RunReport, Any]:
+    # Capture and protect the rule switches once for the entire job. This is
+    # the sole boundary deciding whether indirect detectors can execute.
+    job_flags = (feature_flags or RepairFeatureFlags.version_1()).protected(
+        developer_mode=developer_mode
+    )
     total_mark = time.perf_counter()
     started = datetime.now(timezone.utc)
     metadata_mark = time.perf_counter()
@@ -96,7 +251,7 @@ def _analyse_loaded(
     report = RunReport(
         source=str(path.resolve()), started_at=started.isoformat(),
         environment=_environment(), input_size=stat.st_size,
-        active_rule_id="IFCSG_RULE_REGISTRY_V1",
+        active_rule_id="DIRECT_PRODUCT_MISSING_CONTEXT_V1",
         active_rule_version="1.0",
         repair_mode=repair_mode.title(),
     )
@@ -133,6 +288,7 @@ def _analyse_loaded(
         "size_category": report.file_assessment.size_category,
         "prescan_entity_counts": profile.entity_counts,
         "missing_context_signatures": profile.missing_context_signatures,
+        "repair_feature_flags": job_flags.to_internal_config()["repair_rules"],
     })
 
     if (
@@ -222,15 +378,21 @@ def _analyse_loaded(
         "Collecting supported IFC+SG repair targets", current=0, total=1,
     )
     rule_mark = time.perf_counter()
-    if profile.candidates:
-        scan = ACTIVE_RULE.detect(
+    active_rule = (
+        EnhancedMissingShapeContextRule()
+        if developer_mode and job_flags.indirect_enabled else ACTIVE_RULE
+    )
+    if profile.candidates and (
+        job_flags.enable_direct_product_repairs or job_flags.indirect_enabled
+    ):
+        scan = active_rule.detect(
             model, timings=report.durations, progress=rule_progress,
             cancelled=cancelled, repair_mode=repair_mode,
         )
     else:
         scan = RuleScanResult(
-            rule_id=ACTIVE_RULE.rule_id,
-            rule_version=ACTIVE_RULE.version,
+            rule_id=active_rule.rule_id,
+            rule_version=active_rule.version,
             diagnoses=[],
             targets=[],
             elements_scanned=len(model.by_type("IfcProduct")),
@@ -242,13 +404,32 @@ def _analyse_loaded(
             classification_counts={},
         )
         report.skipped_rules.update({
-            "DIRECT_PRODUCT_MISSING_CONTEXT_V2": "No missing ContextOfItems found",
+            "DIRECT_PRODUCT_BODY_SWEPTSOLID_MISSING_CONTEXT_V1":
+                "No missing ContextOfItems found",
+            "DIRECT_PRODUCT_BODY_TESSELLATION_MISSING_CONTEXT_V1":
+                "No missing ContextOfItems found",
+            "DIRECT_PRODUCT_FOOTPRINT_CURVE2D_MISSING_CONTEXT_V1":
+                "No missing ContextOfItems found",
             "SHAPE_ASPECT_PRODUCT_MISSING_CONTEXT_V1": "No missing ContextOfItems found",
             "REPRESENTATION_MAP_MISSING_CONTEXT_V1": "No missing ContextOfItems found",
             "REPRESENTATION_MAP_FOOTPRINT_MISSING_CONTEXT_V1": (
                 "No missing ContextOfItems found"
             ),
         })
+    if not job_flags.enable_shape_aspect_repairs:
+        report.skipped_rules["SHAPE_ASPECT_PRODUCT_MISSING_CONTEXT_V1"] = (
+            "Skipped because rule disabled"
+        )
+        report.skipped_rules["SHAPE_ASPECT_MAP_MISSING_CONTEXT_V1"] = (
+            "Skipped because rule disabled"
+        )
+    if not job_flags.enable_representation_map_repairs:
+        report.skipped_rules["REPRESENTATION_MAP_MISSING_CONTEXT_V1"] = (
+            "Skipped because rule disabled"
+        )
+        report.skipped_rules["REPRESENTATION_MAP_FOOTPRINT_MISSING_CONTEXT_V1"] = (
+            "Skipped because rule disabled"
+        )
     rule_total = time.perf_counter() - rule_mark
     measured_rule_parts = sum(
         report.durations.get(key, 0.0)
@@ -265,6 +446,20 @@ def _analyse_loaded(
     report.element_type_counts = scan.type_counts
     report.classification_counts = scan.classification_counts
     repairable = sum(target.automatically_repairable for target in scan.targets)
+    supported_repairs = sum(
+        item.production_enabled
+        and item.status is Status.SAFE
+        and item.proposed_context is not None
+        for item in scan.diagnoses
+    )
+    ambiguous_findings = sum(
+        item.status is Status.AMBIGUOUS for item in scan.diagnoses
+    )
+    signature_report_only = sum(
+        item.safety_level == RepairSafetyLevel.REPORT_ONLY.value
+        and item.status is not Status.AMBIGUOUS
+        for item in scan.diagnoses
+    )
     report.summary_counts = {
         "ElementsScanned": scan.elements_scanned,
         "ElementsAffected": scan.elements_affected,
@@ -276,7 +471,11 @@ def _analyse_loaded(
             item.status is Status.SAFE and item.proposed_context is not None
             for item in scan.diagnoses
         ),
+        "SupportedRepairs": supported_repairs,
+        "ExperimentalFindings": 0,
+        "ItemsRequiringReview": signature_report_only + ambiguous_findings,
     }
+    report.repair_signature_statuses = SAFETY_REGISTRY.metadata()
 
     registry_context = IfcSgRuleContext(
         model=model,
@@ -284,11 +483,19 @@ def _analyse_loaded(
         profile=profile,
         diagnoses=report.diagnoses,
     )
-    selection = IFC_SG_RULES.select(registry_context)
-    report.selected_rules = [rule.rule_id for rule in selection.selected]
+    selection = IFC_SG_RULES.select(registry_context, job_flags)
+    execution_rules = []
+    for rule in selection.selected:
+        if rule.repair_mode == "AUDIT_ONLY" and repair_mode.casefold() != "audit":
+            selection.skipped[rule.rule_id] = (
+                "Skipped in Repair IFC mode; available through Audit Only"
+            )
+            continue
+        execution_rules.append(rule)
+    report.selected_rules = [rule.rule_id for rule in execution_rules]
     report.skipped_rules.update(selection.skipped)
     report.rule_metadata = [rule.metadata() for rule in IFC_SG_RULES.all()]
-    for rule in selection.selected:
+    for rule in execution_rules:
         if rule.repair_mode != "AUDIT_ONLY":
             continue
         mark = time.perf_counter()
@@ -307,11 +514,10 @@ def _analyse_loaded(
             time.perf_counter() - mark
         )
     report.summary_counts.update({
-        "ReportOnlyFindings": len(report.audit_findings) + sum(
-            not target.automatically_repairable for target in scan.targets
-        ),
-        "AmbiguousFindings": sum(
-            item.status is Status.AMBIGUOUS for item in scan.diagnoses
+        "ReportOnlyFindings": len(report.audit_findings) + signature_report_only,
+        "AmbiguousFindings": ambiguous_findings,
+        "ItemsRequiringReview": (
+            len(report.audit_findings) + signature_report_only + ambiguous_findings
         ),
     })
 
@@ -343,10 +549,13 @@ def analyse(
     progress: Progress | None = None,
     telemetry: Telemetry | None = None,
     repair_mode: str = "safe",
+    feature_flags: RepairFeatureFlags | None = None,
+    developer_mode: bool = False,
 ) -> RunReport:
     report, _ = _analyse_loaded(
         path.resolve(), validate=validate, quick=quick, cancelled=cancelled,
         progress=progress, telemetry=telemetry, repair_mode=repair_mode,
+        feature_flags=feature_flags, developer_mode=developer_mode,
     )
     if repair_mode.casefold() == "audit":
         report_base = path.resolve().with_name(f"{path.stem}_IFCSG_Audit_Report")
@@ -375,12 +584,92 @@ def analyse(
     return report
 
 
+def prepare_repair_analysis(
+    path: Path,
+    *,
+    validate: bool = False,
+    quick: bool = True,
+    cancelled: Callable[[], bool] | None = None,
+    progress: Progress | None = None,
+    telemetry: Telemetry | None = None,
+    repair_mode: str = "production",
+    feature_flags: RepairFeatureFlags | None = None,
+    developer_mode: bool = False,
+    max_file_size_gb: float | None = None,
+) -> PreparedRepairAnalysis:
+    """Review an IFC once and retain only a compact repair-safe snapshot."""
+    prepared_started = time.perf_counter()
+    source = path.resolve()
+    protected_flags = (feature_flags or RepairFeatureFlags.version_1()).protected(
+        developer_mode=developer_mode
+    )
+    fingerprint_before = source_fingerprint(source)
+    report, model = _analyse_loaded(
+        source,
+        validate=validate,
+        quick=quick,
+        cancelled=cancelled,
+        progress=progress,
+        telemetry=telemetry,
+        max_file_size_gb=max_file_size_gb,
+        repair_mode=repair_mode,
+        feature_flags=protected_flags,
+        developer_mode=developer_mode,
+    )
+    fingerprint_after = source_fingerprint(source)
+    if fingerprint_after != fingerprint_before:
+        model = None
+        gc.collect()
+        raise OutputError("Source IFC changed while it was being reviewed")
+
+    mark = time.perf_counter()
+    semantic_counts = _semantic_counts(model) if model is not None else {}
+    report.durations["cache_semantic_counts"] = time.perf_counter() - mark
+
+    hash_started = time.perf_counter()
+
+    def hash_progress(current: int, total: int) -> None:
+        emit(
+            telemetry,
+            "cache_analysis_fingerprint",
+            "Securing reviewed IFC for the repair step",
+            bytes_processed=current,
+            bytes_total=total,
+            cancellable=True,
+        )
+
+    digest = source_sha256(
+        source, cancelled=cancelled, progress=hash_progress,
+    )
+    report.durations["cache_analysis_fingerprint"] = (
+        time.perf_counter() - hash_started
+    )
+    report.system_diagnostics["prepared_analysis_available"] = True
+    report.system_diagnostics["prepared_analysis_model_retained"] = False
+    report.system_diagnostics["prepared_analysis_sha256"] = digest
+    report.total_duration_seconds = time.perf_counter() - prepared_started
+    report.finished_at = datetime.now(timezone.utc).isoformat()
+    artifact = PreparedRepairAnalysis.create(
+        source_fingerprint=fingerprint_after,
+        source_sha256_value=digest,
+        semantic_counts=semantic_counts,
+        repair_mode=repair_mode,
+        feature_flags=protected_flags,
+        full_validation=validate,
+        report=report,
+    )
+    model = None
+    gc.collect()
+    return artifact
+
+
 def repair_file(
     config: RepairConfig,
     *,
     cancelled: Callable[[], bool] | None = None,
     progress: Progress | None = None,
     telemetry: Telemetry | None = None,
+    prepared_analysis: PreparedRepairAnalysis | None = None,
 ) -> RunReport:
     source = config.source.resolve()
     output = config.resolved_output()
@@ -434,12 +723,87 @@ def repair_file(
                 source.stat().st_mtime, timezone.utc
             ).isoformat(), environment=_environment(),
         )
-        report, model = _analyse_loaded(
-            source, validate=config.full_validation, quick=not config.full_validation,
-            cancelled=cancelled, progress=progress, telemetry=telemetry,
-            max_file_size_gb=config.max_file_size_gb,
-            repair_mode=config.repair_mode,
+        protected_flags = config.feature_flags.protected(
+            developer_mode=config.developer_mode
         )
+        can_reuse = bool(
+            prepared_analysis
+            and prepared_analysis.repair_mode == config.repair_mode.casefold()
+            and prepared_analysis.feature_flags == protected_flags
+            and (
+                not config.full_validation
+                or prepared_analysis.full_validation
+            )
+        )
+        if can_reuse and prepared_analysis is not None:
+            current_stage = "cached_analysis_validation"
+            hash_started = time.perf_counter()
+
+            def reuse_hash_progress(current: int, total: int) -> None:
+                emit(
+                    telemetry,
+                    "cached_analysis_validation",
+                    "Confirming the selected IFC has not changed",
+                    bytes_processed=current,
+                    bytes_total=total,
+                    cancellable=True,
+                )
+
+            if source.stat().st_size != prepared_analysis.source_fingerprint.size:
+                raise OutputError(
+                    "Selected IFC changed after review. Run Review IFC again."
+                )
+            current_hash = source_sha256(
+                source, cancelled=cancelled, progress=reuse_hash_progress,
+            )
+            hash_duration = time.perf_counter() - hash_started
+            if current_hash != prepared_analysis.source_sha256:
+                raise OutputError(
+                    "Selected IFC changed after review. Run Review IFC again."
+                )
+
+            report = prepared_analysis.report_copy()
+            review_durations = dict(report.durations)
+            report.started_at = datetime.now(timezone.utc).isoformat()
+            report.finished_at = ""
+            report.output = None
+            report.output_size = 0
+            report.backup = None
+            report.temporary_path = None
+            report.failed_stage = None
+            report.report_paths = {}
+            report.targeted_verification = {}
+            report.change_audit = {}
+            report.stage_events = []
+            report.errors = []
+            report.total_duration_seconds = 0.0
+            report.durations = {"cached_analysis_validation": hash_duration}
+            report.system_diagnostics["analysis_reused"] = True
+            report.system_diagnostics["review_scan_durations"] = review_durations
+            report.system_diagnostics["prepared_analysis_model_retained"] = False
+            for item in report.diagnoses:
+                item.repaired = False
+                item.validation_result = "Not run"
+            source_semantic_counts = prepared_analysis.semantic_count_dict()
+            model = None
+            log_event(
+                "cached_analysis_validation", "completed",
+                duration=hash_duration,
+                message="Verified review results reused without reopening the source IFC",
+                file_size=report.input_size,
+            )
+        else:
+            report, model = _analyse_loaded(
+                source, validate=config.full_validation,
+                quick=not config.full_validation,
+                cancelled=cancelled, progress=progress, telemetry=telemetry,
+                max_file_size_gb=config.max_file_size_gb,
+                repair_mode=config.repair_mode,
+                feature_flags=protected_flags,
+                developer_mode=config.developer_mode,
+            )
+            source_semantic_counts = _semantic_counts(model)
+            report.system_diagnostics["analysis_reused"] = False
         report.log_path = str(diagnostic_log) if config.debug_logging else None
         for analysis_stage in (
             "input_metadata", "ifc_opening", "collect_target_elements",
@@ -453,6 +817,46 @@ def repair_file(
                     duration=report.durations[analysis_stage],
                     message="Instrumented analysis stage",
                     file_size=report.input_size,
+                )
+        decision_counts = Counter(
+            (
+                item.repair_signature or "Unclassified",
+                item.safety_level,
+                item.proposed_action,
+            )
+            for item in report.diagnoses
+        )
+        log_event(
+            "repair_decisions",
+            "completed",
+            message="Signature-level repair policy applied",
+            decisions=[
+                {
+                    "signature": signature,
+                    "safety_level": safety_level,
+                    "decision": decision,
+                    "count": count,
+                }
+                for (signature, safety_level, decision), count
+                in sorted(decision_counts.items())
+            ],
+        )
+        if config.verbose_debug_logging:
+            for item in report.diagnoses:
+                log_event(
+                    "repair_decision",
+                    "classified",
+                    message=item.repair_decision_reason,
+                    representation_step_id=item.representation_step_id,
+                    signature=item.repair_signature,
+                    owner=item.product_class or item.classification.value,
+                    candidate_context=(
+                        item.proposed_context.step_id
+                        if item.proposed_context else None
+                    ),
+                    safety_level=item.safety_level,
+                    viewer_test_status=item.viewer_test_status,
+                    decision=item.proposed_action,
                 )
         selected = _selected(
             report.diagnoses, config.include_warnings, config.selected_step_ids,
@@ -470,6 +874,12 @@ def repair_file(
             return report
         if cancelled and cancelled():
             raise CancelledError("Repair cancelled before output creation")
+
+        # All detection and optional audit rules are complete. Release the source
+        # semantic model before streaming and reopening the output so large IFCs
+        # do not keep two full IfcOpenShell models resident at the same time.
+        model = None
+        gc.collect()
 
         if output == source and not config.replace_original_with_backup:
             raise OutputError("Replacing the source requires explicit overwrite mode")
@@ -693,10 +1103,33 @@ def repair_file(
                 change_audit.messages
             ))
 
+        semantic_verification, reopened_model = timed(
+            "semantic_reopen_verification",
+            "Reopening repaired IFC and comparing entity counts",
+            lambda: _verify_semantic_reopen(
+                temporary, source_semantic_counts, selected
+            ),
+            indeterminate=True,
+            cancellable=False,
+        )
+        report.targeted_verification["semantic_reopen"] = semantic_verification
+        report.targeted_verification["reopen_passed"] = semantic_verification[
+            "reopen_passed"
+        ]
+        report.targeted_verification["entity_counts_unchanged"] = not bool(
+            semantic_verification["count_differences"]
+        )
+        if not semantic_verification["passed"]:
+            details = list(semantic_verification["target_errors"])
+            if semantic_verification["count_differences"]:
+                details.append("IFC entity counts changed unexpectedly")
+            raise OutputError(
+                "Semantic reopen verification failed: " + "; ".join(details)
+            )
+
         if config.full_validation:
             def full_validate() -> None:
-                reopened = open_model(temporary)
-                report.validation_after = validate_schema(reopened)
+                report.validation_after = validate_schema(reopened_model)
                 (report.validation_new, report.validation_resolved,
                  report.validation_unchanged) = classify_issues(
                     report.validation_before, report.validation_after
@@ -720,6 +1153,8 @@ def repair_file(
                 "full_validation_after", "skipped",
                 message="Fast targeted verification selected",
             )
+        reopened_model = None
+        gc.collect()
 
         if cancelled and cancelled():
             raise CancelledError("Repair cancelled before installing the verified output")
@@ -771,8 +1206,14 @@ def repair_file(
         report.finished_at = datetime.now(timezone.utc).isoformat()
 
         report.system_diagnostics.update(system_snapshot(output.parent))
+        # Reports must show the elapsed repair duration through verified output
+        # installation.  The final value is refreshed again after reporting so
+        # the completion object also includes report-generation time.
+        report.total_duration_seconds = time.perf_counter() - total_started
         if config.generate_report:
-            report_base = output.with_name(f"{source.stem}_IFCSG_Repair_Report")
+            report_base = output.with_name(
+                f"{output.stem}_IFCSG_Repair_Report"
+            )
             try:
                 pdf_path = report_base.with_suffix(".pdf")
                 html_path = report_base.with_suffix(".html")
@@ -804,6 +1245,30 @@ def repair_file(
         _legacy_progress(progress, "Repair complete", 1, 1, 100)
         return report
     except Exception as exc:
+        quarantined_output: Path | None = None
+        failure_report: Path | None = None
+        if (
+            not isinstance(exc, CancelledError)
+            and temporary is not None
+            and temporary.exists()
+        ):
+            try:
+                quarantined = _quarantine_failed_output(
+                    temporary,
+                    source=source,
+                    output=output,
+                    stage=current_stage,
+                    error=exc,
+                )
+                if quarantined is not None:
+                    quarantined_output, failure_report = quarantined
+                    temporary = None
+            except Exception as quarantine_error:
+                if report is not None:
+                    report.errors.append(
+                        "Failed output quarantine was unavailable: "
+                        f"{type(quarantine_error).__name__}: {quarantine_error}"
+                    )
         if report is not None:
             report.failed_stage = current_stage
             report.errors.append(f"{type(exc).__name__}: {exc}")
@@ -821,6 +1286,10 @@ def repair_file(
                 "final_output_path": str(output),
                 "source_remains_unchanged": not source_was_replaced,
                 "log_path": str(diagnostic_log) if config.debug_logging else "",
+                "quarantined_output_path": (
+                    str(quarantined_output) if quarantined_output else ""
+                ),
+                "failure_report_path": str(failure_report) if failure_report else "",
             })
         except Exception:
             pass

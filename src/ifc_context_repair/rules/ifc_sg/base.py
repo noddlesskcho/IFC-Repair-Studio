@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ...models import AuditFinding, Diagnosis
+from ...feature_flags import RepairFeatureFlags
 from ...prescan import StepPrescanProfile
 
 
@@ -49,6 +50,13 @@ class IfcSgRule(ABC):
     confidence_requirement: str
     known_limitations: tuple[str, ...]
     category: str
+    feature_flag: str | None = None
+
+    def is_enabled(self, feature_flags: RepairFeatureFlags) -> bool:
+        """Return false before any rule-specific precomputation can occur."""
+        return self.feature_flag is None or bool(
+            getattr(feature_flags, self.feature_flag)
+        )
 
     def is_applicable(self, context: IfcSgRuleContext) -> bool:
         return context.schema.upper() in self.supported_schemas
@@ -91,4 +99,5 @@ class IfcSgRule(ABC):
             "confidence_requirement": self.confidence_requirement,
             "known_limitations": list(self.known_limitations),
             "category": self.category,
+            "feature_flag": self.feature_flag,
         }

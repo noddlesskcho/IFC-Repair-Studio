@@ -17,13 +17,15 @@ from PySide6.QtWidgets import (
     QTreeWidgetItem, QVBoxLayout, QWidget,
 )
 
+from .. import __version__
 from ..config import RepairConfig
 from ..errors import CancelledError
 from ..file_io import SUPPORTED_INPUT_SUFFIXES, prepare_input
 from ..models import RepresentationClassification, RunReport, Status
 from ..naming import default_repaired_path, overwrite_backup_path
 from ..output_safety import cleanup_abandoned_temps
-from ..repair import analyse, repair_file
+from ..prepared_analysis import PreparedRepairAnalysis
+from ..repair import analyse, prepare_repair_analysis, repair_file
 from ..telemetry import StageUpdate
 from ..utils import format_bytes
 from ..workers import CancellationToken
@@ -84,6 +86,12 @@ class FileMetadata:
     size: int
     modified: datetime
     schema: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedScanResult:
+    report: RunReport
+    prepared_analysis: PreparedRepairAnalysis
 
 
 class TaskWorker(QObject):
@@ -166,7 +174,7 @@ def _read_schema(path: Path) -> str | None:
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("IFC+SG Repair Assistant")
+        self.setWindowTitle(f"IFC+SG Repair Assistant v{__version__}")
         self.resize(1120, 930)
         self.setMinimumSize(920, 700)
         self.setAcceptDrops(True)
@@ -179,6 +187,7 @@ class MainWindow(QMainWindow):
         self.metadata: FileMetadata | None = None
         self.report: RunReport | None = None
         self.report_path: Path | None = None
+        self.prepared_analysis: PreparedRepairAnalysis | None = None
         self.thread: QThread | None = None
         self.worker: TaskWorker | None = None
         self.token = CancellationToken()
@@ -218,11 +227,12 @@ class MainWindow(QMainWindow):
         titles = QVBoxLayout()
         eyebrow = QLabel("IFC+SG  •  AUTODESK REVIT 2025 / 2026  •  CORENET X")
         eyebrow.setObjectName("eyebrow")
-        title = QLabel("IFC+SG Repair Assistant")
+        title = QLabel(f"IFC+SG Repair Assistant  v{__version__}")
         title.setObjectName("title")
         subtitle = QLabel(
-            "Repair known IFC+SG geometry-reference issues from Autodesk Revit 2025 "
-            "and Revit 2026 before CORENET X submission."
+            "Repairs missing IfcShapeRepresentation context references in supported "
+            "Revit 2025/2026 IFC+SG exports. This IFC4 schema non-compliance can "
+            "cause elements to be missing during CORENET X model processing."
         )
         subtitle.setObjectName("subtitle")
         subtitle.setWordWrap(True)
@@ -342,8 +352,8 @@ class MainWindow(QMainWindow):
         modes.addWidget(self.repair_mode_repair)
         modes.addStretch(1)
         self.repair_mode_note = QLabel(
-            "Check the IFC, repair all supported issues that can be resolved safely, "
-            "and verify the repaired IFC."
+            "Check the IFC, repair all supported direct-product geometry references "
+            "that can be resolved safely, and verify the repaired IFC."
         )
         self.repair_mode_note.setObjectName("muted")
         self.repair_mode_note.setWordWrap(True)
@@ -393,9 +403,9 @@ class MainWindow(QMainWindow):
         layout.addWidget(heading)
         grid = QGridLayout()
         labels = [
-            "Geometry References to Repair",
+            "Geometry References Found",
             "Ready to Repair",
-            "Items to Check in Revit",
+            "Items Remaining",
             "IFC Verification",
         ]
         self.metrics: dict[str, Metric] = {}
@@ -586,25 +596,6 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.details_text)
         return card
 
-    def _build_details_card(self) -> QFrame:
-        card = self._card()
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(16, 10, 16, 10)
-        self.details_button = QPushButton("Technical Details")
-        self.details_button.setObjectName("quiet")
-        self.details_button.setCheckable(True)
-        self.details_button.toggled.connect(self._toggle_details)
-        self.details_text = QLabel("")
-        self.details_text.setObjectName("muted")
-        self.details_text.setWordWrap(True)
-        self.details_text.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse
-        )
-        self.details_text.setVisible(False)
-        layout.addWidget(self.details_button, 0, Qt.AlignmentFlag.AlignLeft)
-        layout.addWidget(self.details_text)
-        return card
-
     def _set_primary(self, button: QPushButton | None) -> None:
         for candidate in (self.select_button, self.scan_button, self.repair_button):
             candidate.setObjectName("primary" if candidate is button else "")
@@ -645,7 +636,7 @@ class MainWindow(QMainWindow):
         self.scan_button.setVisible(state not in {WorkflowState.NO_FILE, WorkflowState.COMPLETED})
         self.repair_button.setVisible(state in {WorkflowState.ISSUES_FOUND, WorkflowState.REPAIRING})
         self.action_row.setVisible(
-            state not in {WorkflowState.NO_FILE, WorkflowState.COMPLETED, WorkflowState.FAILED}
+            state not in {WorkflowState.NO_FILE, WorkflowState.COMPLETED}
         )
         self.cancel_button.setVisible(busy)
 
@@ -684,7 +675,11 @@ class MainWindow(QMainWindow):
             self.scan_button.setText("Check Again")
             self.scan_button.setEnabled(True)
             mode = self._repair_mode_key()
-            label = "Audit Complete" if mode == "audit" else f"Repair IFC ({repairable:,})"
+            label = (
+                "Audit Complete"
+                if mode == "audit"
+                else f"Repair IFC ({repairable:,})"
+            )
             self.repair_button.setText(label)
             repair_supported = self._automatic_repair_supported()
             self.repair_button.setEnabled(
@@ -692,9 +687,11 @@ class MainWindow(QMainWindow):
             )
             self.action_message.setText(
                 (
-                    f"{repairable:,} missing IFC geometry references are ready to repair."
+                    f"{repairable:,} supported geometry references are ready "
+                    "for repair."
                     if repair_supported else
-                    "Automatic repair is unavailable for this file. Audit results remain available."
+                    "Automatic repair is unavailable for this file. Audit "
+                    "results remain available."
                 )
             )
             stage = 2
@@ -725,7 +722,9 @@ class MainWindow(QMainWindow):
             self.completion_title.setText(
                 "Audit Completed"
                 if self._repair_mode_key() == "audit"
-                else "Repair Completed"
+                else (
+                    "Repair Completed"
+                )
             )
             stage = 3
             QTimer.singleShot(
@@ -735,7 +734,14 @@ class MainWindow(QMainWindow):
                 ),
             )
         else:
-            self._set_primary(None)
+            self._set_primary(self.scan_button)
+            self.scan_button.setText("Check Again")
+            self.scan_button.setEnabled(self.source_path is not None)
+            self.repair_button.setVisible(False)
+            self.repair_button.setEnabled(False)
+            self.action_message.setText(
+                "The check did not complete. Select Check Again to retry, or choose another IFC."
+            )
             self.completion_card.setObjectName("errorCard")
             self.completion_title.setText("Repair Failed")
             stage = 2
@@ -787,6 +793,7 @@ class MainWindow(QMainWindow):
         )
         self.report = None
         self.report_path = None
+        self.prepared_analysis = None
         self.file_name.setText(path.name)
         schema = self.metadata.schema or "Schema will be assessed during pre-scan"
         self.file_meta.setText(
@@ -815,7 +822,9 @@ class MainWindow(QMainWindow):
             self.classification_tree.clear()
 
     def _repair_mode_key(self) -> str:
-        return "audit" if self.repair_mode_audit.isChecked() else "advanced"
+        if self.repair_mode_audit.isChecked():
+            return "audit"
+        return "production"
 
     @Slot(bool)
     def _repair_mode_changed(self, checked: bool) -> None:
@@ -823,9 +832,9 @@ class MainWindow(QMainWindow):
             return
         mode = self._repair_mode_key()
         notes = {
-            "advanced": (
-                "Check the IFC, repair all supported issues that can be resolved safely, "
-                "and verify the repaired IFC."
+            "production": (
+                "Check the IFC, repair supported direct-product geometry references "
+                "that can be resolved safely, and verify the repaired IFC."
             ),
             "audit": (
                 "Check the IFC and generate a report without changing the file."
@@ -836,6 +845,7 @@ class MainWindow(QMainWindow):
             WorkflowState.SCANNING, WorkflowState.REPAIRING,
         }:
             self.report = None
+            self.prepared_analysis = None
             self._clear_metrics()
             self._apply_state(WorkflowState.READY_TO_SCAN)
 
@@ -923,7 +933,7 @@ class MainWindow(QMainWindow):
 
     def _start_job(
         self, operation: str,
-        function: Callable[[Callable[[StageUpdate], None]], RunReport],
+        function: Callable[[Callable[[StageUpdate], None]], object],
     ) -> None:
         if self.thread and self.thread.isRunning():
             return
@@ -969,20 +979,33 @@ class MainWindow(QMainWindow):
             return
         path = self.source_path
 
-        def operation(telemetry: Callable[[StageUpdate], None]) -> RunReport:
+        def operation(telemetry: Callable[[StageUpdate], None]) -> object:
             with prepare_input(path) as prepared:
-                report = analyse(
-                    prepared.ifc_path, validate=False, quick=True,
-                    cancelled=self.token.cancelled, telemetry=telemetry,
-                    repair_mode=self._repair_mode_key(),
-                )
+                if self._repair_mode_key() == "audit":
+                    report = analyse(
+                        prepared.ifc_path, validate=False, quick=True,
+                        cancelled=self.token.cancelled, telemetry=telemetry,
+                        repair_mode="audit",
+                    )
+                    artifact = None
+                else:
+                    artifact = prepare_repair_analysis(
+                        prepared.ifc_path, validate=False, quick=True,
+                        cancelled=self.token.cancelled, telemetry=telemetry,
+                        repair_mode="production",
+                    )
+                    report = artifact.report_copy()
                 report.source = str(path)
                 report.repair_mode = (
-                    "Audit Only" if self._repair_mode_key() == "audit" else "Repair IFC"
+                    "Audit Only"
+                    if self._repair_mode_key() == "audit"
+                    else "Repair IFC"
                 )
                 if report.file_assessment:
                     report.file_assessment.original_name = path.name
                     report.file_assessment.input_kind = prepared.input_kind
+                if artifact is not None:
+                    return PreparedScanResult(report, artifact)
                 return report
 
         self._start_job("scan", operation)
@@ -991,14 +1014,13 @@ class MainWindow(QMainWindow):
     def repair(self) -> None:
         if not self.source_path or not self.report:
             return
-        save_as = True
         output = Path(self.output_edit.text()).expanduser().resolve()
-        if save_as and output == self.source_path:
+        if output == self.source_path:
             QMessageBox.warning(
                 self, "Choose a new output", "Save As output must differ from the original."
             )
             return
-        if save_as and output.exists():
+        if output.exists():
             QMessageBox.warning(
                 self, "Output already exists",
                 "Choose a different output filename. Existing files are not overwritten in recommended mode.",
@@ -1031,7 +1053,8 @@ class MainWindow(QMainWindow):
                     repair_mode=self._repair_mode_key(),
                 )
                 report = repair_file(
-                    config, cancelled=self.token.cancelled, telemetry=telemetry
+                    config, cancelled=self.token.cancelled, telemetry=telemetry,
+                    prepared_analysis=self.prepared_analysis,
                 )
                 report.source = str(self.source_path)
                 report.repair_mode = "Repair IFC"
@@ -1053,6 +1076,8 @@ class MainWindow(QMainWindow):
             "context_index": "Reviewing available geometry references",
             "opening_relationships": "Reviewing model relationships",
             "context_resolution": "Preparing safe repair recommendations",
+            "cache_analysis_fingerprint": "Securing reviewed IFC for repair",
+            "cached_analysis_validation": "Confirming the reviewed IFC is unchanged",
             "indirect_context_index": "Reviewing available geometry references",
             "indirect_product_ownership": "Reviewing model relationships",
             "indirect_shape_aspects": "Reviewing indirect geometry references",
@@ -1115,8 +1140,17 @@ class MainWindow(QMainWindow):
         self.progress_detail.setText(detail)
 
     @Slot(object)
-    def _completed(self, report: RunReport) -> None:
+    def _completed(self, result: object) -> None:
         self.elapsed_timer.stop()
+        if isinstance(result, PreparedScanResult):
+            report = result.report
+            self.prepared_analysis = result.prepared_analysis
+        elif isinstance(result, RunReport):
+            report = result
+            if self.operation == "scan":
+                self.prepared_analysis = None
+        else:
+            raise TypeError(f"Unexpected worker result: {type(result).__name__}")
         self.report = report
         self.temporary_path = None
         if self.operation == "scan":
@@ -1138,8 +1172,8 @@ class MainWindow(QMainWindow):
                 )
                 self.completion_summary.setText(
                     f"{report.summary_counts.get('AffectedRepresentations', 0):,} "
-                    f"geometry references detected\n"
-                    f"{review:,} items recommended for review in Revit\n\n"
+                    f"supported geometry references detected\n"
+                    f"{review:,} supported item(s) remain\n\n"
                     "✓  Original IFC preserved\n"
                     "✓  Detailed report created\n\n"
                     f"Completed in {_format_duration(report.total_duration_seconds)}"
@@ -1157,17 +1191,12 @@ class MainWindow(QMainWindow):
         self.report_path = Path(html) if html else None
         repaired = report.summary_counts.get("SuccessfullyRepaired", 0)
         remaining = report.summary_counts.get("TargetedIssuesRemaining", 0)
-        review = (
-            report.summary_counts.get("ReportOnlyFindings", 0)
-            + report.summary_counts.get("AmbiguousFindings", 0)
-            + remaining
-        )
         verification = bool(report.targeted_verification.get("passed"))
         duration = report.total_duration_seconds or sum(report.durations.values())
         output_name = Path(report.output).name if report.output else "Not created"
         self.completion_summary.setText(
             f"{repaired:,} geometry references repaired\n"
-            f"{review:,} items recommended for review in Revit\n\n"
+            f"{remaining:,} supported issues remaining\n\n"
             f"{'✓' if verification else '•'}  IFC "
             f"{'verified' if verification else 'verification requires review'}\n"
             f"{'✓' if report.change_audit.get('passed') else '•'}  "
@@ -1259,14 +1288,10 @@ class MainWindow(QMainWindow):
 
     def _show_scan_results(self, report: RunReport) -> None:
         counts = report.summary_counts
-        review_count = (
-            counts.get("ReportOnlyFindings", 0)
-            + counts.get("AmbiguousFindings", 0)
-        )
         values = {
-            "Geometry References to Repair": counts.get("AffectedRepresentations", 0),
-            "Ready to Repair": counts.get("AutomaticallyRepairable", 0),
-            "Items to Check in Revit": review_count,
+            "Geometry References Found": counts.get("AffectedRepresentations", 0),
+            "Ready to Repair": counts.get("SupportedRepairs", 0),
+            "Items Remaining": counts.get("NotAutomaticallyRepairable", 0),
             "IFC Verification": (
                 "Verified" if report.targeted_verification.get("passed") else "Ready"
             ),
@@ -1276,7 +1301,7 @@ class MainWindow(QMainWindow):
         self.breakdown.setText("")
         self.details_text.setText(self._technical_details(report))
         issue_count = counts.get("AffectedRepresentations", 0)
-        ready = counts.get("AutomaticallyRepairable", 0)
+        ready = counts.get("SupportedRepairs", 0)
         self.repair_summary.setText(
             "\n".join((
                 (
@@ -1285,14 +1310,16 @@ class MainWindow(QMainWindow):
                     "✓  Known Revit IFC export issue was not detected"
                 ),
                 (
-                    "✓  Automatic repair is available"
+                    "✓  Supported direct-product repair is available"
                     if ready and self._automatic_repair_supported() else
-                    "•  Automatic repair is not available for this file"
+                    "•  No production-approved repair is available for this file"
                 ),
+                f"•  {counts.get('NotAutomaticallyRepairable', 0):,} supported "
+                "item(s) could not be resolved automatically",
                 "✓  Original IFC will remain unchanged",
                 (
                     "✓  A repaired IFC will be created"
-                    if ready and self._repair_mode_key() != "audit"
+                    if ready and self._repair_mode_key() == "production"
                     and self._automatic_repair_supported() else
                     "✓  Audit report will be created without changing the IFC"
                 ),
@@ -1351,16 +1378,24 @@ class MainWindow(QMainWindow):
     @Slot(object)
     def _failed(self, details: dict[str, str]) -> None:
         self.elapsed_timer.stop()
+        quarantined = details.get("quarantined_output_path")
+        retained_message = (
+            "A failed test output was quarantined for diagnostics."
+            if quarantined
+            else "Incomplete output removed."
+        )
         self.completion_summary.setText(
             "The repair could not be completed safely.\n\n"
             "✓  Original IFC preserved\n"
-            "✓  Incomplete output removed\n\n"
+            f"✓  {retained_message}\n\n"
             "No repaired IFC was published. Open Technical Details for diagnostic information."
         )
         self.details_text.setText(
             f"Stage: {details.get('stage', 'unknown')}\n"
             f"{details.get('type', 'Error')}: {details.get('message', 'Unknown error')}\n"
             f"Temporary output removed: {details.get('temporary_file_removed', True)}\n"
+            f"Quarantined diagnostic IFC: {quarantined or 'Not retained'}\n"
+            f"Failure report: {details.get('failure_report_path') or 'Not created'}\n"
             f"Output: {details.get('final_output_path', self.output_edit.text())}\n"
             f"Debug log: {details.get('log_path') or 'Not enabled'}"
         )
@@ -1433,6 +1468,7 @@ class MainWindow(QMainWindow):
         self.metadata = None
         self.report = None
         self.report_path = None
+        self.prepared_analysis = None
         self.file_name.setText("No IFC file selected")
         self.file_meta.setText("Choose an IFC, IFCZIP, or ZIP file to begin")
         self.file_path.setText("")

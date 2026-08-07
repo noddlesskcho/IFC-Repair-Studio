@@ -18,10 +18,17 @@ submission.
   output, mandatory verification, then atomic installation.
 - Reports: concise PDF and interactive offline HTML. JSON is optional.
 
-Production repair rules:
+Version 1 production repair:
 
-- `DIRECT_PRODUCT_MISSING_CONTEXT_V2`
+- Direct `IfcProduct -> IfcProductDefinitionShape -> IfcShapeRepresentation`
+- Body / SweptSolid
+- Body / Tessellation
+- FootPrint / Curve2D
+
+Retained developer rules, skipped before detection in Version 1:
+
 - `SHAPE_ASPECT_PRODUCT_MISSING_CONTEXT_V1`
+- `SHAPE_ASPECT_MAP_MISSING_CONTEXT_V1`
 - `REPRESENTATION_MAP_MISSING_CONTEXT_V1`
 - `REPRESENTATION_MAP_FOOTPRINT_MISSING_CONTEXT_V1`
 
@@ -46,8 +53,8 @@ CLI examples:
 
 ```powershell
 ifc-context-repair scan model.ifczip --mode audit --json
-ifc-context-repair scan model.ifc --mode safe
-ifc-context-repair repair model.ifc --mode advanced --output model_repaired.ifc
+ifc-context-repair scan model.ifc --mode production
+ifc-context-repair repair model.ifc --mode production --output model_repaired.ifc
 ```
 
 Build:
@@ -59,11 +66,12 @@ Build:
 See:
 
 - [Production architecture](docs/production-architecture-v1.0.md)
+- [Version 1 direct-product scope](docs/version1-direct-product-scope.md)
 - [User guide](docs/user-guide-v1.0.md)
 - [Rule development guide](docs/ifc-sg-rule-development-guide.md)
 - [Known limitations](docs/known-limitations-v1.0.md)
 - [Build instructions](docs/build-v1.0.md)
-- [Performance results](docs/performance-v1.0.md)
+- [Performance results](docs/benchmark-version1.md)
 - [Release validation](docs/release-validation-v1.0.md)
 - [PyInstaller warning classification](docs/pyinstaller-warning-classification-v1.0.md)
 

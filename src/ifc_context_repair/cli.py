@@ -29,7 +29,9 @@ def _parser() -> argparse.ArgumentParser:
     scan.add_argument("--json", action="store_true")
     scan.add_argument("--prescan-only", action="store_true")
     scan.add_argument(
-        "--mode", choices=["safe", "advanced", "audit"], default="safe",
+        "--mode",
+        choices=["production", "audit", "safe"],
+        default="production",
     )
     validate = sub.add_parser("validate", help="Run IFC schema validation")
     validate.add_argument("input", type=Path)
@@ -41,7 +43,7 @@ def _parser() -> argparse.ArgumentParser:
     repair.add_argument("--include-warnings", action="store_true")
     repair.add_argument("--geometry-test", action="store_true")
     repair.add_argument(
-        "--mode", choices=["safe", "advanced"], default="safe",
+        "--mode", choices=["production", "safe"], default="production",
     )
     repair.add_argument("--full-validation", action="store_true")
     repair.add_argument("--overwrite-output", action="store_true")

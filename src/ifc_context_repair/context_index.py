@@ -80,6 +80,12 @@ class SemanticIndex:
                 continue
             parent = attr(context, "ParentContext")
             parent_id = entity_id(parent)
+            dimension = attr(context, "CoordinateSpaceDimension")
+            if dimension is None and parent is not None:
+                dimension = attr(parent, "CoordinateSpaceDimension")
+            context_type = attr(context, "ContextType")
+            if context_type is None and parent is not None:
+                context_type = attr(parent, "ContextType")
             connected = cid in root_contexts or parent_id in root_contexts
             if connected:
                 index.project_context_ids.add(cid)
@@ -88,10 +94,10 @@ class SemanticIndex:
                 step_id=cid,
                 entity_type=entity_type(context) or "Unknown",
                 identifier=attr(context, "ContextIdentifier"),
-                context_type=attr(context, "ContextType"),
+                context_type=context_type,
                 target_view=str(attr(context, "TargetView")) if attr(context, "TargetView") else None,
                 parent_step_id=parent_id,
-                dimension=attr(context, "CoordinateSpaceDimension"),
+                dimension=dimension,
                 connected_to_project=connected,
             )
 

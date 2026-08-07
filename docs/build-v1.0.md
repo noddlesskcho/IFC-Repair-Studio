@@ -44,7 +44,7 @@ the UI:
 
 ```powershell
 .\dist\IFCSGRepairAssistant-1.0.0\IFCSGRepairAssistant-1.0.0.exe `
-  --self-test C:\path\input.ifc C:\path\output.ifc advanced
+  --self-test C:\path\input.ifc C:\path\output.ifc safe
 ```
 
 This diagnostic switch is not a second supported user workflow. It returns a

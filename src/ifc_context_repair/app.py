@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import sys
 
+from . import __version__
+
 
 _INSTANCE_MUTEX: object | None = None
 
@@ -60,6 +62,7 @@ def main() -> int:
 
     application = QApplication(sys.argv)
     application.setApplicationName("IFC+SG Repair Assistant")
+    application.setApplicationVersion(__version__)
     icon = QIcon(str(resource_path("assets/ifc_repair_studio.ico")))
     application.setWindowIcon(icon)
     window = MainWindow()
@@ -69,7 +72,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    import multiprocessing
-
-    multiprocessing.freeze_support()
     raise SystemExit(main())

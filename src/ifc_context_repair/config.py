@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from .naming import default_repaired_path
+from .feature_flags import RepairFeatureFlags
 
 
 @dataclass(slots=True)
@@ -14,7 +15,7 @@ class RepairConfig:
     create_backup: bool = False
     include_warnings: bool = False
     geometry_test: bool = False
-    repair_mode: str = "safe"
+    repair_mode: str = "production"
     max_file_size_gb: float | None = None
     overwrite_output: bool = False
     selected_step_ids: set[int] | None = None
@@ -27,7 +28,11 @@ class RepairConfig:
     disk_safety_margin_mb: int = 64
     abandoned_temp_age_hours: float = 24.0
     minimum_confidence: float = 0.70
-    rule_id: str = "MISSING_SHAPE_CONTEXT_CLASSIFIER_V1"
+    rule_id: str = "DIRECT_PRODUCT_MISSING_CONTEXT_V1"
+    feature_flags: RepairFeatureFlags = field(
+        default_factory=RepairFeatureFlags.version_1
+    )
+    developer_mode: bool = False
 
     def resolved_output(self) -> Path:
         if self.replace_original_with_backup:

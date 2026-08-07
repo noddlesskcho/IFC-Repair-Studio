@@ -8,7 +8,7 @@ from ifc_context_repair.rules import ACTIVE_RULE
 
 @unittest.skipUnless(importlib.util.find_spec("ifcopenshell"), "IfcOpenShell not installed")
 class ProductRuleScopeTests(unittest.TestCase):
-    def test_all_missing_contexts_are_classified_and_safe_mode_is_conservative(self):
+    def test_version1_collects_only_supported_direct_product_contexts(self):
         import ifcopenshell
 
         model = ifcopenshell.file(schema="IFC4")
@@ -123,35 +123,23 @@ class ProductRuleScopeTests(unittest.TestCase):
             path.write_bytes(data)
             model = ifcopenshell.open(str(path))
             result = ACTIVE_RULE.detect(model)
+        expected_direct = {*supported_reps, orphan_rep.id()}
         self.assertEqual(
             {item.representation_step_id for item in result.diagnoses},
-            set(malformed_ids),
+            expected_direct,
         )
         self.assertEqual(result.elements_scanned, 7)
-        self.assertEqual(result.representations_scanned, 9)
+        self.assertEqual(result.representations_scanned, 7)
         target_ids = {item.representation_step_id for item in result.targets}
-        self.assertEqual(target_ids, set(malformed_ids))
+        self.assertEqual(target_ids, expected_direct)
         orphan_target = next(
             item for item in result.targets
             if item.representation_step_id == orphan_rep.id()
         )
         self.assertFalse(orphan_target.automatically_repairable)
-        diagnoses = {
-            item.representation_step_id: item for item in result.diagnoses
-        }
-        self.assertEqual(
-            diagnoses[unsupported_rep.id()].classification.value, "UNSUPPORTED"
-        )
-        self.assertEqual(
-            diagnoses[aspect_rep.id()].classification.value, "ORPHANED"
-        )
-        self.assertEqual(
-            diagnoses[mapped_rep.id()].classification.value, "REPRESENTATION_MAP"
-        )
-        self.assertFalse(next(
-            target.automatically_repairable for target in result.targets
-            if target.representation_step_id == mapped_rep.id()
-        ))
+        self.assertNotIn(unsupported_rep.id(), target_ids)
+        self.assertNotIn(aspect_rep.id(), target_ids)
+        self.assertNotIn(mapped_rep.id(), target_ids)
 
 
 if __name__ == "__main__":
