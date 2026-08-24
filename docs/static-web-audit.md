@@ -109,9 +109,10 @@ files are plain static HTML/CSS/JavaScript.
 ## Safety boundary
 
 The Browser Edition does not pretend that its lightweight STEP parser is
-IfcOpenShell. It repairs only direct IFC4 Body/SweptSolid records when the target
-is missing, one project-connected compatible context exists, strong sibling,
-same-file peer, or validated slab-pattern evidence exists, and no conflict is
-found. Experimental signatures are visible as report-only. Indirect geometry,
+IfcOpenShell. It repairs only direct IFC4 Body/SweptSolid and FootPrint/Curve2D
+records when the target is missing, one project-connected compatible context
+exists, strong sibling, same-file peer, or validated slab-pattern evidence
+exists, and no conflict is found. Experimental signatures are visible as
+report-only. Indirect geometry,
 schema validation, geometry generation, and rich reports remain explicitly
 available only in the desktop product.

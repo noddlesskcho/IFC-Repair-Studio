@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Static, local-browser IFC geometry-reference audit and repair.",
+  "description": "Static local-browser repair assistant for missing IFC+SG geometry context references in Revit 2025/2026 exports.",
   "scripts": {
     "build": "node scripts/build-static.mjs",
     "test": "node --test tests/browser/*.test.mjs"

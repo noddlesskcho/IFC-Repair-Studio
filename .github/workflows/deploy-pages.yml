@@ -1,4 +1,4 @@
-name: Deploy IFC Fixer to GitHub Pages
+name: Deploy IFC+SG Geometry Reference Repair Assistant
 
 on:
   push:

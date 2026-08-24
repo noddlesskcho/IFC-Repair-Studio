@@ -3,19 +3,19 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Private, in-browser IFC+SG geometry-reference audit and repair.">
+  <meta name="description" content="Local browser repair for missing IFC geometry context references in Autodesk Revit 2025 and 2026 IFC+SG exports.">
   <meta name="referrer" content="no-referrer">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
-  <title>IFC Fixer - Browser Edition</title>
+  <title>IFC+SG Geometry Reference Repair Assistant</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23175cd3'/%3E%3Cpath d='M18 20h28v7H25v7h17v7H25v11h-7z' fill='white'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="./css/app.css">
 </head>
 <body>
   <header class="site-header">
     <div>
-      <p class="eyebrow">IFC4 &middot; IFC+SG &middot; CORENET X PREPARATION</p>
-      <h1>IFC Fixer</h1>
-      <p class="subtitle">Repair supported missing IFC geometry references locally in your browser.</p>
+      <p class="eyebrow">REVIT 2025 / 2026 IFC+SG &middot; IFC4 GEOMETRY REFERENCE REPAIR &middot; CORENET X PRE-SUBMISSION</p>
+      <h1>IFC+SG Geometry Reference Repair Assistant</h1>
+      <p class="subtitle">Repairs missing <code>IfcShapeRepresentation</code> context references in IFC+SG files exported from Autodesk Revit 2025 and 2026. This IFC4 schema issue can cause model elements to be missing during CORENET X processing.</p>
     </div>
     <span class="privacy-badge">Your IFC stays on this device</span>
   </header>
@@ -94,7 +94,7 @@
   </main>
 
   <footer>
-    <p><strong>Browser Edition scope:</strong> IFC4 direct-product Body/SweptSolid repairs with uniquely proven project contexts. Other supported signatures are audited and shown as report-only until browser regression validation is complete.</p>
+    <p><strong>Browser repair scope:</strong> IFC4 direct-product Body/SweptSolid and FootPrint/Curve2D missing-context repairs with uniquely proven project contexts. Body/Tessellation remains report-only pending compatibility approval.</p>
     <p>This tool is not a complete IFC validator or CORENET X compliance checker. Use the desktop edition for full semantic validation and advanced diagnostics.</p>
   </footer>
   <script type="module" src="./js/app.js"></script>
