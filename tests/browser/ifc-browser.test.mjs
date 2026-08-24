@@ -21,23 +21,26 @@ test("STEP argument splitting preserves nested lists and quoted commas", () => {
   assert.deepEqual(splitStepArguments("$,'Body, Main','SweptSolid',(#1,#2)"), ["$", "'Body, Main'", "'SweptSolid'", "(#1,#2)"]);
 });
 
-test("browser pipeline detects, repairs, and verifies one direct representation", async () => {
+test("browser pipeline repairs direct Body and FootPrint representations", async () => {
   const source = await fixtureFile();
   const original = new Uint8Array(await source.arrayBuffer());
   const model = await loadIfc(source);
   const analysis = await analyzeIfc(model);
 
   assert.equal(model.schema, "IFC4");
-  assert.equal(analysis.issues.length, 1);
-  assert.equal(analysis.repairable, 1);
+  assert.equal(analysis.issues.length, 2);
+  assert.equal(analysis.repairable, 2);
   assert.equal(analysis.issues[0].id, 300);
   assert.equal(analysis.issues[0].candidateContextId, 11);
+  assert.equal(analysis.issues[1].id, 302);
+  assert.equal(analysis.issues[1].candidateContextId, 12);
 
   const {output, repairs} = await applyRepairs(source, analysis.issues);
   const verification = await verifyRepairs(source, output, repairs);
-  assert.equal(verification.repaired, 1);
+  assert.equal(verification.repaired, 2);
   assert.equal(verification.unexpectedChanges, 0);
   assert.match(await output.text(), /#300=IFCSHAPEREPRESENTATION\(#11,'Body','SweptSolid'/);
+  assert.match(await output.text(), /#302=IFCSHAPEREPRESENTATION\(#12,'FootPrint','Curve2D'/);
   assert.deepEqual(new Uint8Array(await source.arrayBuffer()), original, "source IFC must remain unchanged");
 });
 

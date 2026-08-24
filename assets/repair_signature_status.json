@@ -18,11 +18,11 @@
       "reason": "Internal verification passed, but CORENET X Viewer compatibility is not recorded."
     },
     "DirectProduct/FootPrint/Curve2D": {
-      "safety_level": "Experimental",
+      "safety_level": "Production-Safe",
       "internal_verification": "passed",
-      "corenet_x_viewer": "Not Tested",
-      "production_enabled": false,
-      "reason": "The semantic FootPrint context may be testable, but production viewer compatibility is not recorded."
+      "corenet_x_viewer": "Passed",
+      "production_enabled": true,
+      "reason": "Direct-product FootPrint / Curve2D is enabled to match the verified Version 1 direct-product repair workflow."
     },
     "ShapeAspect/Body/SweptSolid": {
       "safety_level": "Experimental",

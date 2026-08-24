@@ -1,7 +1,7 @@
 import {refs, stepString} from "./ifc-loader.js";
 
 const SUPPORTED = new Set(["body|sweptsolid", "body|tessellation", "footprint|curve2d"]);
-const PRODUCTION_SAFE = new Set(["body|sweptsolid"]);
+const PRODUCTION_SAFE = new Set(["body|sweptsolid", "footprint|curve2d"]);
 const CLASS_NAMES = new Map([
   ["IFCSLAB", "IfcSlab"], ["IFCWALL", "IfcWall"],
   ["IFCOPENINGELEMENT", "IfcOpeningElement"], ["IFCCOVERING", "IfcCovering"],
