@@ -8,7 +8,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>IFC+SG Geometry Reference Repair Assistant</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23175cd3'/%3E%3Cpath d='M18 20h28v7H25v7h17v7H25v11h-7z' fill='white'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="./css/app.css">
+  <link rel="stylesheet" href="./css/app.css?v=1.0.0-r4">
 </head>
 <body>
   <header class="site-header">
@@ -37,7 +37,10 @@
         <strong>Drop your .ifc file here</strong>
         <span>Processing happens locally. The file is not uploaded.</span>
       </div>
-      <div id="file-summary" class="file-summary hidden" aria-live="polite"></div>
+      <div id="file-summary" class="file-summary hidden" aria-live="polite">
+        <span id="file-details"></span>
+        <button id="change-file-button" class="button" type="button">Change IFC</button>
+      </div>
     </section>
 
     <section class="card hidden" id="progress-card" aria-live="polite">
@@ -97,7 +100,7 @@
     <p><strong>Browser repair scope:</strong> IFC4 direct-product Body/SweptSolid and FootPrint/Curve2D missing-context repairs with uniquely proven project contexts. Body/Tessellation remains report-only pending compatibility approval.</p>
     <p>This tool is not a complete IFC validator or CORENET X compliance checker.</p>
   </footer>
-  <script type="module" src="./js/app.js?v=1.0.0-r3"></script>
+  <script type="module" src="./js/app.js?v=1.0.0-r4"></script>
 </body>
 </html>
 
