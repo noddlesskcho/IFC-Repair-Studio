@@ -1,4 +1,4 @@
-import {refs, stepString} from "./ifc-loader.js";
+import {refs, stepString} from "./ifc-loader.js?v=1.0.0-r2";
 
 const SUPPORTED = new Set(["body|sweptsolid", "body|tessellation", "footprint|curve2d"]);
 const PRODUCTION_SAFE = new Set(["body|sweptsolid", "footprint|curve2d"]);
