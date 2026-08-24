@@ -22,6 +22,7 @@ validation-output/
 # Packaging artifacts
 build/
 dist/
+web-dist/
 *.exe
 *.msi
 *.zip
@@ -42,3 +43,7 @@ dist/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# The licensed synthetic browser regression fixture is intentionally tracked.
+!tests/browser/fixtures/
+!tests/browser/fixtures/*.ifc

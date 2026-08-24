@@ -1,0 +1,14 @@
+{
+  "name": "ifc-fixer-browser",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Static, local-browser IFC geometry-reference audit and repair.",
+  "scripts": {
+    "build": "node scripts/build-static.mjs",
+    "test": "node --test tests/browser/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
