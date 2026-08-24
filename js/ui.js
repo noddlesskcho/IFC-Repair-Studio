@@ -1,10 +1,13 @@
 const byId = id => document.getElementById(id);
 
 export const elements = {
+  selectCard: byId("select-card"),
   input: byId("file-input"),
   choose: byId("choose-button"),
+  changeFile: byId("change-file-button"),
   drop: byId("drop-zone"),
   fileSummary: byId("file-summary"),
+  fileDetails: byId("file-details"),
   progressCard: byId("progress-card"),
   progress: byId("progress"),
   progressTitle: byId("progress-title"),
@@ -48,8 +51,9 @@ export function setStep(step) {
 }
 
 export function showFile(file) {
+  elements.selectCard.classList.add("has-file");
   elements.fileSummary.classList.remove("hidden");
-  elements.fileSummary.textContent = `${file.name} | ${formatBytes(file.size)} | Ready for local processing`;
+  elements.fileDetails.textContent = `${file.name} | ${formatBytes(file.size)} | Ready for local processing`;
 }
 
 export function updateProgress({stage, current = 0, total = 0, unit = "items"}) {
@@ -149,6 +153,7 @@ export function showError(error) {
 
 export function resetUi() {
   elements.input.value = "";
+  elements.selectCard.classList.remove("has-file");
   elements.fileSummary.classList.add("hidden");
   elements.progressCard.classList.add("hidden");
   elements.results.classList.add("hidden");
@@ -157,3 +162,4 @@ export function resetUi() {
   elements.body.replaceChildren();
   setStep(1);
 }
+
