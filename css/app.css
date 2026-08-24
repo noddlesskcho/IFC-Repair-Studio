@@ -4,4 +4,10 @@
 .privacy-badge{padding:9px 14px;border-radius:14px;line-height:1.3;text-align:left}
 .privacy-badge span{display:block}
 .privacy-badge span+span{font-size:12px;font-weight:600}
+/* Collapse the upload controls after an IFC has been selected. */
+#select-card.has-file{padding:14px 18px}
+#select-card.has-file>.section-heading,#select-card.has-file>.drop-zone{display:none}
+#select-card.has-file .file-summary{margin-top:0;display:flex;align-items:center;justify-content:space-between;gap:18px}
+#select-card.has-file .file-summary .button{flex:0 0 auto;padding:8px 13px}
+@media(max-width:600px){#select-card.has-file .file-summary{align-items:flex-start;flex-direction:column}#select-card.has-file .file-summary .button{width:100%}}
 
