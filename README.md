@@ -1,80 +1,121 @@
-# IFC+SG Repair Assistant
+# IFC Fixer
 
-IFC+SG Repair Assistant helps BIM users detect and repair a known
-geometry-reference issue found in IFC+SG files exported from Autodesk Revit
-2025 and Revit 2026.
+IFC Fixer includes a static Browser Edition for private, local IFC4 inspection
+and targeted repair, plus the existing Windows desktop application for the full
+IFC+SG workflow.
 
-The application restores missing IFC geometry references without changing the
-model geometry, helping prepare the IFC for the next stage of CORENET X
-submission.
+The Browser Edition runs entirely from HTML, CSS, and JavaScript. An IFC selected
+in the page is read through the browser File API, processed on the user's device,
+and returned as a downloadable `Blob`. It is not uploaded to this project or to
+another service.
 
-## Production scope
+## Run locally
 
-- Schema: IFC4 only for repair; unsupported schemas receive a limited audit.
-- Inputs: `.ifc`, `.ifczip`, or `.zip` containing exactly one IFC.
-- Supported exporters: Autodesk Revit 2025 and Autodesk Revit 2026 IFC+SG.
-- Modes: Audit Only and Repair IFC.
-- Writer: one-pass, variable-length STEP patching to a same-directory temporary
-  output, mandatory verification, then atomic installation.
-- Reports: concise PDF and interactive offline HTML. JSON is optional.
-
-Version 1 production repair:
-
-- Direct `IfcProduct -> IfcProductDefinitionShape -> IfcShapeRepresentation`
-- Body / SweptSolid
-- Body / Tessellation
-- FootPrint / Curve2D
-
-Retained developer rules, skipped before detection in Version 1:
-
-- `SHAPE_ASPECT_PRODUCT_MISSING_CONTEXT_V1`
-- `SHAPE_ASPECT_MAP_MISSING_CONTEXT_V1`
-- `REPRESENTATION_MAP_MISSING_CONTEXT_V1`
-- `REPRESENTATION_MAP_FOOTPRINT_MISSING_CONTEXT_V1`
-
-Report-only beta checks:
-
-- `IFCSPACE_BODY_AUDIT_V1`
-- `BASE_QUANTITY_AUDIT_V1`
-- `IFCSG_GEOREFERENCING_AUDIT_V1`
-
-## Development
+No installation or production backend is required. From the repository root,
+serve the files with any static server:
 
 ```powershell
-py -3.12 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -e ".[ui,test,build,diagnostics]"
-pytest
-ifc-context-repair-gui
+python -m http.server 8000
 ```
 
-CLI examples:
+Then open `http://localhost:8000/`. Python is only acting as a local static file
+server here; it is not used by the web application.
+
+If Node.js 20 or newer is available, the browser regression tests and static
+build can be run with:
 
 ```powershell
-ifc-context-repair scan model.ifczip --mode audit --json
-ifc-context-repair scan model.ifc --mode production
-ifc-context-repair repair model.ifc --mode production --output model_repaired.ifc
+npm test
+npm run build
 ```
 
-Build:
+## Build static site
 
 ```powershell
-.\scripts\build_windows.ps1 -Python .\.venv\Scripts\python.exe
+npm run build
 ```
 
-See:
+This creates `web-dist/`. The separate name is intentional: this repository's
+existing `dist/` directory is reserved for Windows/PyInstaller releases.
+`web-dist/` contains only deployable static files and can be served by any basic
+HTTP server.
 
-- [Production architecture](docs/production-architecture-v1.0.md)
-- [Version 1 direct-product scope](docs/version1-direct-product-scope.md)
-- [User guide](docs/user-guide-v1.0.md)
-- [Rule development guide](docs/ifc-sg-rule-development-guide.md)
-- [Known limitations](docs/known-limitations-v1.0.md)
-- [Build instructions](docs/build-v1.0.md)
-- [Performance results](docs/benchmark-version1.md)
-- [Release validation](docs/release-validation-v1.0.md)
-- [PyInstaller warning classification](docs/pyinstaller-warning-classification-v1.0.md)
+Node.js is a development/build tool only. The production site does not require
+Node.js, Python, Flask, FastAPI, Express, or any server-side application.
 
-> This application performs targeted repairs for known IFC+SG export issues.
-> It is not a complete IFC validator or CORENET X compliance checker. A
-> repaired IFC should still undergo the normal submission validation process.
+## Deploy to GitHub Pages
+
+The workflow at `.github/workflows/deploy-pages.yml` tests, builds, uploads, and
+deploys the site with the official GitHub Pages actions.
+
+1. Push the repository to GitHub with `main` as the default branch.
+2. Open **Settings > Pages** in the repository.
+3. Under **Build and deployment**, select **GitHub Actions** as the source.
+4. Open **Actions** and run **Deploy IFC Fixer to GitHub Pages**, or push a
+   commit to `main`.
+5. Wait for both the `build` and `deploy` jobs to complete.
+
+The resulting URL format is:
+
+```text
+https://USERNAME.github.io/REPOSITORY/
+```
+
+All application paths are repository-relative, so the site works under that
+subdirectory without redirects or history routing.
+
+## Supported IFC fixes
+
+Browser production repair is deliberately narrow:
+
+- uncompressed `.ifc` input;
+- IFC4 schema;
+- directly owned `IfcProductDefinitionShape` representations;
+- missing `IfcShapeRepresentation.ContextOfItems`;
+- `Body / SweptSolid` with one uniquely compatible, project-connected context;
+- same-file sibling/peer evidence or the validated Revit slab pattern;
+- byte-preserving, variable-length replacement of only the first representation
+  attribute.
+
+`Body / Tessellation` and `FootPrint / Curve2D` are detected but remain
+report-only in the browser until their production compatibility policy is
+approved. `IfcShapeAspect`, `IfcRepresentationMap`, ZIP/IFCZIP input, PDF/HTML
+engineering reports, IfcOpenShell schema validation, and geometry-engine checks
+remain desktop-only.
+
+The original IFC object is never modified. The output is assembled from slices
+of the original file plus the selected replacement tokens, then target records
+and the STEP footer are verified before download is enabled.
+
+## Browser compatibility
+
+Use a current desktop version of Microsoft Edge, Google Chrome, Firefox, or
+Safari with support for JavaScript modules, `Blob`, `File.stream()`,
+`TextDecoder`, and `URL.createObjectURL`.
+
+Large-file processing is streaming-first, but browser memory and Blob limits
+vary by browser and operating system. The desktop application remains the
+recommended option for very large models and full semantic validation.
+
+## Privacy
+
+- No IFC upload endpoint exists.
+- No backend API call is made.
+- No analytics, telemetry, cookie, or external CDN is included.
+- Processing occurs locally in the active browser tab.
+- A file leaves the browser only when the user explicitly downloads the repaired
+  IFC or otherwise shares it.
+
+## Desktop application
+
+The Python/PySide6 application remains under `src/ifc_context_repair/`. It uses
+IfcOpenShell and ReportLab for richer audits, reports, ZIP handling, optional
+full schema validation, diagnostics, and the packaged Windows workflow. The web
+conversion does not remove or silently reduce those desktop features.
+
+See [the static conversion audit](docs/static-web-audit.md) for the exact
+dependency and capability mapping.
+
+> IFC Fixer performs targeted repairs for known IFC+SG export issues. It is not
+> a complete IFC validator or CORENET X compliance checker. A repaired IFC
+> should still undergo the normal submission validation process.

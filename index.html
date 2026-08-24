@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Private, in-browser IFC+SG geometry-reference audit and repair.">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>IFC Fixer - Browser Edition</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23175cd3'/%3E%3Cpath d='M18 20h28v7H25v7h17v7H25v11h-7z' fill='white'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="./css/app.css">
+</head>
+<body>
+  <header class="site-header">
+    <div>
+      <p class="eyebrow">IFC4 &middot; IFC+SG &middot; CORENET X PREPARATION</p>
+      <h1>IFC Fixer</h1>
+      <p class="subtitle">Repair supported missing IFC geometry references locally in your browser.</p>
+    </div>
+    <span class="privacy-badge">Your IFC stays on this device</span>
+  </header>
+
+  <main>
+    <section class="workflow" aria-label="Workflow">
+      <span class="active" data-step="1">1 Select IFC</span>
+      <span data-step="2">2 Review results</span>
+      <span data-step="3">3 Download repaired IFC</span>
+    </section>
+
+    <section class="card" id="select-card">
+      <div class="section-heading">
+        <div><h2>Select an IFC file</h2><p>Choose or drag-drop one uncompressed IFC4 file.</p></div>
+        <button id="choose-button" class="button primary" type="button">Choose IFC</button>
+      </div>
+      <input id="file-input" type="file" accept=".ifc" hidden>
+      <div id="drop-zone" class="drop-zone" tabindex="0" role="button" aria-label="Drop an IFC file or press Enter to choose one">
+        <strong>Drop your .ifc file here</strong>
+        <span>Processing happens locally. The file is not uploaded.</span>
+      </div>
+      <div id="file-summary" class="file-summary hidden" aria-live="polite"></div>
+    </section>
+
+    <section class="card hidden" id="progress-card" aria-live="polite">
+      <div class="progress-head"><strong id="progress-title">Reading IFC</strong><span id="progress-percent">0%</span></div>
+      <progress id="progress" max="100" value="0"></progress>
+      <p id="progress-detail" class="muted">Preparing local analysis...</p>
+    </section>
+
+    <section class="hidden" id="results-section">
+      <div class="metrics">
+        <article class="metric"><strong id="issues-count">0</strong><span>Geometry references found</span></article>
+        <article class="metric"><strong id="repairable-count">0</strong><span>Ready to repair</span></article>
+        <article class="metric amber"><strong id="review-count">0</strong><span>Unable to repair automatically</span></article>
+        <article class="metric"><strong id="schema-value">-</strong><span>IFC schema</span></article>
+      </div>
+
+      <section class="card">
+        <div class="section-heading">
+          <div><h2>Supported repair results</h2><p>Only direct product representations in the Version 1 browser scope are listed.</p></div>
+          <label class="select-all"><input id="select-all" type="checkbox" checked> Select all safe repairs</label>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Apply</th><th>Outcome</th><th>STEP ID</th><th>Element</th><th>Name</th><th>Representation</th><th>Details</th></tr></thead>
+            <tbody id="results-body"></tbody>
+          </table>
+        </div>
+        <div class="actions">
+          <button id="check-another" class="button" type="button">Check another IFC</button>
+          <button id="repair-button" class="button primary" type="button">Repair selected issues</button>
+        </div>
+      </section>
+    </section>
+
+    <section class="card success hidden" id="completion-card" aria-live="polite">
+      <p class="success-mark" aria-hidden="true">&#10003;</p>
+      <h2>Repaired IFC ready</h2>
+      <p id="completion-summary"></p>
+      <ul>
+        <li>Only selected <code>IfcShapeRepresentation.ContextOfItems</code> values were changed.</li>
+        <li>The original IFC remains unchanged.</li>
+        <li>No file was uploaded or transmitted by this application.</li>
+      </ul>
+      <div class="actions centered">
+        <button id="download-button" class="button primary" type="button">Download repaired IFC</button>
+        <button id="restart-button" class="button" type="button">Check another IFC</button>
+      </div>
+    </section>
+
+    <section class="card error hidden" id="error-card" role="alert">
+      <h2>Unable to process this IFC</h2><p id="error-message"></p>
+      <button id="error-restart" class="button" type="button">Choose another IFC</button>
+    </section>
+  </main>
+
+  <footer>
+    <p><strong>Browser Edition scope:</strong> IFC4 direct-product Body/SweptSolid repairs with uniquely proven project contexts. Other supported signatures are audited and shown as report-only until browser regression validation is complete.</p>
+    <p>This tool is not a complete IFC validator or CORENET X compliance checker. Use the desktop edition for full semantic validation and advanced diagnostics.</p>
+  </footer>
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>
