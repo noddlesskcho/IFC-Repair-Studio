@@ -1,4 +1,4 @@
-import {refs, stepString} from "./ifc-loader.js?v=1.0.0-r2";
+import {refs, stepString} from "./ifc-loader.js?v=1.0.0-r3";
 
 const SUPPORTED = new Set(["body|sweptsolid", "body|tessellation", "footprint|curve2d"]);
 const PRODUCTION_SAFE = new Set(["body|sweptsolid", "footprint|curve2d"]);
@@ -132,8 +132,10 @@ export async function analyzeIfc(model, onProgress = () => {}) {
     const candidate = eligible.length === 1 ? eligible[0] : null;
     const peerCount = candidate ? (productPeers.get(candidate.id) || semanticPeers.get(candidate.id) || 0) : 0;
     const suppliedCleanPattern = normalized(product.type) === "ifcslab" &&
-      signatureKey(record) === "body|sweptsolid" && itemType === "ifcextrudedareasolid" &&
-      candidate?.targetView === "MODEL_VIEW";
+      candidate?.targetView === "MODEL_VIEW" && (
+        (signatureKey(record) === "body|sweptsolid" && itemType === "ifcextrudedareasolid") ||
+        (signatureKey(record) === "footprint|curve2d" && itemType === "ifcindexedpolycurve")
+      );
     const strongEvidence = siblingEvidence || peerCount > 0 || suppliedCleanPattern;
     if (!strongEvidence) conflicts.push("No matching valid sibling or exact semantic peer proves the candidate context.");
     if (ownerCount !== 1) conflicts.push(`${ownerCount} products share this product definition shape; ownership is ambiguous.`);
