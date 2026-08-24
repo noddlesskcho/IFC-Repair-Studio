@@ -1,13 +1,16 @@
-import {loadIfc} from "./ifc-loader.js?v=1.0.0-r3";
-import {analyzeIfc} from "./ifc-analyzer.js?v=1.0.0-r3";
-import {applyRepairs, verifyRepairs} from "./ifc-fixer.js?v=1.0.0-r3";
-import {downloadBlob, repairedFileName} from "./ifc-exporter.js?v=1.0.0-r3";
-import {elements, renderResults, resetUi, setStep, showCompletion, showError, showFile, updateProgress, updateRepairButton} from "./ui.js?v=1.0.0-r3";
+import {loadIfc} from "./ifc-loader.js?v=1.0.0-r4";
+import {analyzeIfc} from "./ifc-analyzer.js?v=1.0.0-r4";
+import {applyRepairs, verifyRepairs} from "./ifc-fixer.js?v=1.0.0-r4";
+import {downloadBlob, repairedFileName} from "./ifc-exporter.js?v=1.0.0-r4";
+import {elements, renderResults, resetUi, setStep, showCompletion, showError, showFile, updateProgress, updateRepairButton} from "./ui.js?v=1.0.0-r4";
 
 const state = {file: null, analysis: null, output: null, outputName: null, busy: false};
 
 function setBusy(value) {
-  state.busy = value; elements.choose.disabled = value; elements.repair.disabled = value || !state.analysis?.repairable;
+  state.busy = value;
+  elements.choose.disabled = value;
+  elements.changeFile.disabled = value;
+  elements.repair.disabled = value || !state.analysis?.repairable;
 }
 
 async function processFile(file) {
@@ -39,6 +42,7 @@ function restart() {
 }
 
 elements.choose.addEventListener("click", () => elements.input.click());
+elements.changeFile.addEventListener("click", () => elements.input.click());
 elements.drop.addEventListener("click", () => elements.input.click());
 elements.drop.addEventListener("keydown", event => { if (["Enter", " "].includes(event.key)) { event.preventDefault(); elements.input.click(); } });
 elements.input.addEventListener("change", () => { if (elements.input.files[0]) processFile(elements.input.files[0]); });
@@ -51,3 +55,4 @@ elements.download.addEventListener("click", () => { if (state.output) downloadBl
 for (const button of [elements.checkAnother, elements.restart, elements.errorRestart]) button.addEventListener("click", restart);
 
 window.addEventListener("beforeunload", () => { state.output = null; });
+

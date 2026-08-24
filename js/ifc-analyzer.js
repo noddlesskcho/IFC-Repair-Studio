@@ -1,4 +1,4 @@
-import {refs, stepString} from "./ifc-loader.js?v=1.0.0-r3";
+import {refs, stepString} from "./ifc-loader.js?v=1.0.0-r4";
 
 const SUPPORTED = new Set(["body|sweptsolid", "body|tessellation", "footprint|curve2d"]);
 const PRODUCTION_SAFE = new Set(["body|sweptsolid", "footprint|curve2d"]);
@@ -144,7 +144,7 @@ export async function analyzeIfc(model, onProgress = () => {}) {
     const repairable = Boolean(candidate && strongEvidence && productionApproved && conflicts.length === 0);
     issues.push({
       id: record.id, productId: product.id, globalId: product.globalId, productType: displayClass(product.type),
-      productName: product.name || "—", identifier, representationType, itemType: model.entities.get(firstItem) || "Unknown",
+      productName: product.name || "â€”", identifier, representationType, itemType: model.entities.get(firstItem) || "Unknown",
       candidateContextId: candidate?.id || null, repairable, selected: repairable,
       details: repairable
         ? `Unique project context #${candidate.id} proven by ${suppliedCleanPattern && !peerCount && !siblingEvidence ? "the validated clean-sample slab pattern" : `${peerCount || 1} matching representation(s)`}.`
@@ -165,3 +165,4 @@ export async function analyzeIfc(model, onProgress = () => {}) {
     unsupportedMessage: null,
   };
 }
+
