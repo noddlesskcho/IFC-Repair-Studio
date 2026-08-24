@@ -1,8 +1,8 @@
-import {loadIfc} from "./ifc-loader.js";
-import {analyzeIfc} from "./ifc-analyzer.js";
-import {applyRepairs, verifyRepairs} from "./ifc-fixer.js";
-import {downloadBlob, repairedFileName} from "./ifc-exporter.js";
-import {elements, renderResults, resetUi, setStep, showCompletion, showError, showFile, updateProgress, updateRepairButton} from "./ui.js";
+import {loadIfc} from "./ifc-loader.js?v=1.0.0-r2";
+import {analyzeIfc} from "./ifc-analyzer.js?v=1.0.0-r2";
+import {applyRepairs, verifyRepairs} from "./ifc-fixer.js?v=1.0.0-r2";
+import {downloadBlob, repairedFileName} from "./ifc-exporter.js?v=1.0.0-r2";
+import {elements, renderResults, resetUi, setStep, showCompletion, showError, showFile, updateProgress, updateRepairButton} from "./ui.js?v=1.0.0-r2";
 
 const state = {file: null, analysis: null, output: null, outputName: null, busy: false};
 
