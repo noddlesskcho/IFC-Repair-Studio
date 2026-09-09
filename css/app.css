@@ -42,7 +42,7 @@
 .package-summary{max-width:900px;margin:12px auto;color:#344054;font-weight:700}
 #progress-card{position:relative;min-height:125px;padding-right:22px;overflow:hidden}
 .download-progress-panel{position:relative;min-height:112px;padding-right:15px;overflow:hidden}
-.surf-bot{position:absolute;right:10px;bottom:5px;width:39px;height:22px;pointer-events:none;animation:surf-travel 1.15s cubic-bezier(.45,0,.55,1) infinite alternate}
+.surf-bot{position:absolute;right:10px;bottom:5px;width:49px;height:28px;pointer-events:none;animation:surf-travel 1.15s cubic-bezier(.45,0,.55,1) infinite alternate}
 .surf-bot svg{display:block;width:100%;height:100%;overflow:visible;shape-rendering:geometricPrecision}
 .wave{fill:none;stroke-linecap:round;stroke-width:4;stroke-dasharray:12 8;animation:wave-slide .42s linear infinite}
 .wave-back{stroke:#98a2b3;opacity:.65}.wave-front{stroke:#344054}
@@ -53,6 +53,6 @@
 @keyframes surf-travel{from{transform:translateX(-24px) rotate(-3deg)}to{transform:translateX(3px) rotate(3deg)}}
 @keyframes robot-flip{0%,12%{transform:translateY(0) rotate(0)}45%{transform:translateY(-34px) rotate(-180deg)}78%{transform:translateY(-10px) rotate(-360deg)}88%,100%{transform:translateY(0) rotate(-360deg)}}
 @keyframes wave-slide{to{stroke-dashoffset:-20}}
-@media(max-width:650px){#progress-card{padding-right:22px}.download-progress-panel{padding-right:15px}.surf-bot{right:7px;width:39px}}
+@media(max-width:650px){#progress-card{padding-right:22px}.download-progress-panel{padding-right:15px}.surf-bot{right:7px;width:49px}}
 @media(prefers-reduced-motion:reduce){.surf-bot,.wave,.robot{animation:none}}
 
