@@ -1,4 +1,4 @@
-name: Deploy IFC+SG Geometry Reference Repair Assistant
+name: Deploy IFC+SG IfcShapeRepresentation Repair Tool
 
 on:
   push:

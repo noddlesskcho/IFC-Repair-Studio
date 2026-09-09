@@ -1,8 +1,7 @@
-# IFC+SG Geometry Reference Repair Assistant
+# IFC+SG IfcShapeRepresentation Repair Tool
 
-IFC+SG Geometry Reference Repair Assistant includes a static Browser Edition for private, local IFC4 inspection
-and targeted repair, plus the existing Windows desktop application for the full
-IFC+SG workflow.
+IFC+SG IfcShapeRepresentation Repair Tool is a static browser application for
+private, local IFC4 inspection and targeted repair.
 
 The Browser Edition runs entirely from HTML, CSS, and JavaScript. An IFC selected
 in the page is read through the browser File API, processed on the user's device,
@@ -51,7 +50,7 @@ deploys the site with the official GitHub Pages actions.
 1. Push the repository to GitHub with `main` as the default branch.
 2. Open **Settings > Pages** in the repository.
 3. Under **Build and deployment**, select **GitHub Actions** as the source.
-4. Open **Actions** and run **Deploy IFC+SG Geometry Reference Repair Assistant**, or push a
+4. Open **Actions** and run **Deploy IFC+SG IfcShapeRepresentation Repair Tool**, or push a
    commit to `main`.
 5. Wait for both the `build` and `deploy` jobs to complete.
 
@@ -70,18 +69,18 @@ Browser production repair is deliberately narrow:
 
 - uncompressed `.ifc` input;
 - IFC4 schema;
-- directly owned `IfcProductDefinitionShape` representations;
+- all `IfcShapeRepresentation` entities, including representations referenced by
+  `IfcProductDefinitionShape`, `IfcShapeAspect`, presentation layer assignments,
+  and `IfcRepresentationMap`;
 - missing `IfcShapeRepresentation.ContextOfItems`;
-- `Body / SweptSolid` and `FootPrint / Curve2D` with one uniquely compatible, project-connected context;
-- same-file sibling/peer evidence or the validated Revit slab pattern;
+- `Body / SweptSolid`, `Body / Tessellation`, and `FootPrint / Curve2D`;
+- exactly one compatible, project-connected representation context;
 - byte-preserving, variable-length replacement of only the first representation
   attribute.
 
-`Body / Tessellation` is detected but remains report-only in the browser until
-its production compatibility policy is approved. `IfcShapeAspect`,
-`IfcRepresentationMap`, ZIP/IFCZIP input, PDF/HTML
-engineering reports, IfcOpenShell schema validation, and geometry-engine checks
-remain desktop-only.
+Ambiguous or missing compatible contexts remain report-only. ZIP/IFCZIP input,
+PDF/HTML engineering reports, IfcOpenShell schema validation, and geometry-engine
+checks are outside this static browser tool.
 
 The original IFC object is never modified. The output is assembled from slices
 of the original file plus the selected replacement tokens, then target records
@@ -106,16 +105,6 @@ recommended option for very large models and full semantic validation.
 - A file leaves the browser only when the user explicitly downloads the repaired
   IFC or otherwise shares it.
 
-## Desktop application
-
-The Python/PySide6 application remains under `src/ifc_context_repair/`. It uses
-IfcOpenShell and ReportLab for richer audits, reports, ZIP handling, optional
-full schema validation, diagnostics, and the packaged Windows workflow. The web
-conversion does not remove or silently reduce those desktop features.
-
-See [the static conversion audit](docs/static-web-audit.md) for the exact
-dependency and capability mapping.
-
-> IFC+SG Geometry Reference Repair Assistant performs targeted repairs for known IFC+SG export issues. It is not
+> IFC+SG IfcShapeRepresentation Repair Tool performs targeted repairs for known IFC+SG export issues. It is not
 > a complete IFC validator or CORENET X compliance checker. A repaired IFC
 > should still undergo the normal submission validation process.

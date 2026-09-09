@@ -1,9 +1,9 @@
 {
-  "name": "ifc-fixer-browser",
+  "name": "ifc-shape-representation-repair-tool",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Static local-browser repair assistant for missing IFC+SG geometry context references in Revit 2025/2026 exports.",
+  "description": "Static browser tool for repairing missing IFC+SG IfcShapeRepresentation context references.",
   "scripts": {
     "build": "node scripts/build-static.mjs",
     "test": "node --test tests/browser/*.test.mjs"
