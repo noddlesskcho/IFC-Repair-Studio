@@ -4,6 +4,7 @@ import test from "node:test";
 import {fileURLToPath} from "node:url";
 
 import {analyzeIfc} from "../../js/ifc-analyzer.js";
+import {combineAnalyses, selectedIssuesForFile} from "../../js/ifc-batch.js";
 import {applyRepairs, verifyRepairedModel, verifyRepairs} from "../../js/ifc-fixer.js";
 import {loadIfc, splitStepArguments} from "../../js/ifc-loader.js";
 import {downloadBlob, repairedFileName} from "../../js/ifc-exporter.js";
@@ -216,4 +217,50 @@ test("repair leaves unrelated optional dollar tokens unchanged", async () => {
   const {output, repairs} = await applyRepairs(source, analysis.issues);
   assert.equal(repairs.length, 1);
   assert.match(await output.text(), /#40=IFCOWNERHISTORY\(\$,\$,\$,.ADDED.,\$,\$,\$,0\);/);
+});
+
+test("batch analysis combines counts and identifies each source file", () => {
+  const issueA = {id: 100, repairable: true, selected: true};
+  const issueB = {id: 200, repairable: false, selected: false};
+  const entries = [
+    {
+      file: {name: "architecture.ifc"},
+      analysis: {
+        schema: "IFC4", issues: [issueA], repairable: 1, reviewOnly: 0,
+        representationsScanned: 10, productsScanned: 2,
+        counts: {bodySweptSolid: 1, bodyTessellation: 0, footprintCurve2D: 0},
+      },
+      error: null,
+    },
+    {
+      file: {name: "structure.ifc"},
+      analysis: {
+        schema: "IFC4", issues: [issueB], repairable: 0, reviewOnly: 1,
+        representationsScanned: 20, productsScanned: 4,
+        counts: {bodySweptSolid: 0, bodyTessellation: 1, footprintCurve2D: 0},
+      },
+      error: null,
+    },
+    {file: {name: "invalid.ifc"}, analysis: null, error: new Error("Invalid IFC")},
+  ];
+  const combined = combineAnalyses(entries);
+  assert.equal(combined.filesScanned, 3);
+  assert.equal(combined.successfulFiles, 2);
+  assert.equal(combined.fileErrors.length, 1);
+  assert.equal(combined.representationsScanned, 30);
+  assert.equal(combined.counts.bodySweptSolid, 1);
+  assert.equal(combined.counts.bodyTessellation, 1);
+  assert.deepEqual(combined.issues.map(issue => issue.fileName), ["architecture.ifc", "structure.ifc"]);
+});
+
+test("batch repair selection remains isolated by source file", () => {
+  const analysis = {
+    issues: [
+      {id: 100, fileIndex: 0, selected: true, repairable: true},
+      {id: 101, fileIndex: 0, selected: false, repairable: true},
+      {id: 200, fileIndex: 1, selected: true, repairable: true},
+    ],
+  };
+  assert.deepEqual(selectedIssuesForFile(analysis, 0).map(issue => issue.id), [100]);
+  assert.deepEqual(selectedIssuesForFile(analysis, 1).map(issue => issue.id), [200]);
 });

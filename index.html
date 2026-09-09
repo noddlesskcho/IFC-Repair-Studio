@@ -8,7 +8,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>IFC+SG IfcShapeRepresentation Repair Tool</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23175cd3'/%3E%3Cpath d='M18 20h28v7H25v7h17v7H25v11h-7z' fill='white'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="./css/app.css?v=1.0.0-r6">
+  <link rel="stylesheet" href="./css/app.css?v=1.0.0-r7">
 </head>
 <body>
   <header class="site-header">
@@ -22,24 +22,24 @@
 
   <main>
     <section class="workflow" aria-label="Workflow">
-      <span class="active" data-step="1">1 Select IFC</span>
+      <span class="active" data-step="1">1 Select IFC files</span>
       <span data-step="2">2 Review results</span>
-      <span data-step="3">3 Download repaired IFC</span>
+      <span data-step="3">3 Download repaired IFCs</span>
     </section>
 
     <section class="card" id="select-card">
       <div class="section-heading">
-        <div><h2>Select an IFC file</h2><p>Choose or drag-drop one uncompressed IFC4 file.</p></div>
-        <button id="choose-button" class="button primary" type="button">Choose IFC</button>
+        <div><h2>Select IFC files</h2><p>Choose or drag-drop one or more uncompressed IFC4 files.</p></div>
+        <button id="choose-button" class="button primary" type="button">Choose IFC files</button>
       </div>
-      <input id="file-input" type="file" accept=".ifc" hidden>
-      <div id="drop-zone" class="drop-zone" tabindex="0" role="button" aria-label="Drop an IFC file or press Enter to choose one">
-        <strong>Drop your .ifc file here</strong>
-        <span>Processing happens locally. The file is not uploaded.</span>
+      <input id="file-input" type="file" accept=".ifc" multiple hidden>
+      <div id="drop-zone" class="drop-zone" tabindex="0" role="button" aria-label="Drop IFC files or press Enter to choose them">
+        <strong>Drop your .ifc files here</strong>
+        <span>Files are processed sequentially and locally. They are not uploaded.</span>
       </div>
       <div id="file-summary" class="file-summary hidden" aria-live="polite">
         <span id="file-details"></span>
-        <button id="change-file-button" class="button" type="button">Change IFC</button>
+        <button id="change-file-button" class="button" type="button">Change files</button>
       </div>
     </section>
 
@@ -64,7 +64,7 @@
         </div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Apply</th><th>Status</th><th>STEP ID</th><th>Identifier</th><th>Type</th><th>Current context</th><th>Proposed context</th><th>Context STEP ID</th><th>Referenced by</th><th>Reason</th></tr></thead>
+            <thead><tr><th>Apply</th><th>Status</th><th>File</th><th>STEP ID</th><th>Identifier</th><th>Type</th><th>Current context</th><th>Proposed context</th><th>Context STEP ID</th><th>Referenced by</th><th>Reason</th></tr></thead>
             <tbody id="results-body"></tbody>
           </table>
         </div>
@@ -77,15 +77,15 @@
 
     <section class="card success hidden" id="completion-card" aria-live="polite">
       <p class="success-mark" aria-hidden="true">&#10003;</p>
-      <h2>Repaired IFC ready</h2>
+      <h2>Repaired IFC files ready</h2>
       <p id="completion-summary"></p>
       <ul>
         <li>Only selected <code>IfcShapeRepresentation.ContextOfItems</code> values were changed.</li>
         <li>The original IFC remains unchanged.</li>
         <li>No file was uploaded or transmitted by this application.</li>
       </ul>
+      <div id="download-list" class="download-list"></div>
       <div class="actions centered">
-        <button id="download-button" class="button primary" type="button">Download repaired IFC</button>
         <button id="restart-button" class="button" type="button">Check another IFC</button>
       </div>
     </section>
@@ -100,7 +100,7 @@
     <p><strong>Browser repair scope:</strong> IFC4 Body/SweptSolid, Body/Tessellation, and FootPrint/Curve2D missing-context repairs when exactly one compatible project-connected context is available.</p>
     <p>This tool is not a complete IFC validator or CORENET X compliance checker.</p>
   </footer>
-  <script type="module" src="./js/app.js?v=1.0.0-r6"></script>
+  <script type="module" src="./js/app.js?v=1.0.0-r7"></script>
 </body>
 </html>
 

@@ -8,6 +8,10 @@ in the page is read through the browser File API, processed on the user's device
 and returned as a downloadable `Blob`. It is not uploaded to this project or to
 another service.
 
+One or more IFC files can be selected or dropped together. Files are analyzed and
+repaired sequentially to keep peak browser memory practical, and each repaired IFC
+is offered as a separate download.
+
 ## Run locally
 
 No installation or production backend is required. From the repository root,

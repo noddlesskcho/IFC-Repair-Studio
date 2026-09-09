@@ -11,3 +11,7 @@
 #select-card.has-file .file-summary .button{flex:0 0 auto;padding:8px 13px}
 @media(max-width:600px){#select-card.has-file .file-summary{align-items:flex-start;flex-direction:column}#select-card.has-file .file-summary .button{width:100%}}
 
+.download-list{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;margin:18px 0}
+.download-list:empty{display:none}
+.file-error{color:var(--red);background:var(--redbg);font-weight:650}
+

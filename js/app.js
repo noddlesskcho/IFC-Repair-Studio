@@ -1,10 +1,14 @@
-import {loadIfc} from "./ifc-loader.js?v=1.0.0-r6";
-import {analyzeIfc} from "./ifc-analyzer.js?v=1.0.0-r6";
-import {applyRepairs, verifyRepairedModel, verifyRepairs} from "./ifc-fixer.js?v=1.0.0-r6";
-import {downloadBlob, repairedFileName} from "./ifc-exporter.js?v=1.0.0-r6";
-import {elements, renderResults, resetUi, setStep, showCompletion, showError, showFile, updateProgress, updateRepairButton} from "./ui.js?v=1.0.0-r6";
+import {analyzeIfc} from "./ifc-analyzer.js?v=1.0.0-r7";
+import {combineAnalyses, selectedIssuesForFile} from "./ifc-batch.js?v=1.0.0-r7";
+import {downloadBlob, repairedFileName} from "./ifc-exporter.js?v=1.0.0-r7";
+import {applyRepairs, verifyRepairedModel, verifyRepairs} from "./ifc-fixer.js?v=1.0.0-r7";
+import {loadIfc} from "./ifc-loader.js?v=1.0.0-r7";
+import {
+  elements, renderResults, resetUi, setStep, showCompletion, showError, showFiles,
+  updateProgress, updateRepairButton,
+} from "./ui.js?v=1.0.0-r7";
 
-const state = {file: null, analysis: null, output: null, outputName: null, busy: false};
+const state = {entries: [], analysis: null, outputs: [], busy: false};
 
 function setBusy(value) {
   state.busy = value;
@@ -13,58 +17,129 @@ function setBusy(value) {
   elements.repair.disabled = value || !state.analysis?.repairable;
 }
 
-async function processFile(file) {
+function progressForFile(index, total, fileName, activity = "") {
+  return progress => updateProgress({
+    ...progress,
+    stage: `${activity}${index + 1}/${total}: ${fileName} — ${progress.stage}`,
+  });
+}
+
+async function processFiles(fileList) {
   if (state.busy) return;
-  resetUi(); state.file = file; state.analysis = null; state.output = null; state.outputName = null;
-  showFile(file); setStep(2); setBusy(true);
+  const files = [...fileList];
+  if (!files.length) return;
+  resetUi();
+  state.entries = [];
+  state.analysis = null;
+  state.outputs = [];
+  showFiles(files);
+  setStep(2);
+  setBusy(true);
   try {
-    const model = await loadIfc(file, updateProgress);
-    state.analysis = await analyzeIfc(model, updateProgress);
+    for (let index = 0; index < files.length; index += 1) {
+      const file = files[index];
+      const reportProgress = progressForFile(index, files.length, file.name, "Checking ");
+      try {
+        const model = await loadIfc(file, reportProgress);
+        const analysis = await analyzeIfc(model, reportProgress);
+        state.entries.push({file, analysis, error: null});
+      } catch (error) {
+        state.entries.push({file, analysis: null, error});
+      }
+    }
+    state.analysis = combineAnalyses(state.entries);
     renderResults(state.analysis, () => updateRepairButton(state.analysis));
-  } catch (error) { showError(error); }
-  finally { setBusy(false); if (state.analysis) updateRepairButton(state.analysis); }
+  } catch (error) {
+    showError(error);
+  } finally {
+    setBusy(false);
+    if (state.analysis) updateRepairButton(state.analysis);
+  }
 }
 
 async function repairSelected() {
-  if (state.busy || !state.file || !state.analysis) return;
+  if (state.busy || !state.analysis) return;
   setBusy(true);
+  state.outputs = [];
+  const summary = {
+    expectedChanges: 0,
+    successfulChanges: 0,
+    unexpectedChanges: 0,
+    remainingSupportedMissing: 0,
+  };
   try {
-    const selected = state.analysis.issues.filter(issue => issue.selected && issue.repairable);
-    const {output, repairs} = await applyRepairs(state.file, selected, updateProgress);
-    const byteResult = await verifyRepairs(state.file, output, repairs, updateProgress);
-    state.outputName = repairedFileName(state.file.name);
-    updateProgress({stage: "Rechecking repaired IFC", current: 0, total: output.size, unit: "bytes"});
-    const outputModel = await loadIfc(output, updateProgress, state.outputName);
-    const semanticResult = verifyRepairedModel(outputModel, repairs);
-    const postAnalysis = await analyzeIfc(outputModel, updateProgress);
-    const result = {
-      ...byteResult,
-      ...semanticResult,
-      remainingSupportedMissing: postAnalysis.issues.length,
-      remainingRepairable: postAnalysis.repairable,
-    };
-    state.output = output;
-    showCompletion(result, state.outputName);
-  } catch (error) { showError(error); }
-  finally { setBusy(false); }
+    for (let index = 0; index < state.entries.length; index += 1) {
+      const entry = state.entries[index];
+      if (entry.error) continue;
+      const selected = selectedIssuesForFile(state.analysis, index);
+      if (!selected.length) continue;
+      const reportProgress = progressForFile(index, state.entries.length, entry.file.name, "Repairing ");
+      const {output, repairs} = await applyRepairs(entry.file, selected, reportProgress);
+      const byteResult = await verifyRepairs(entry.file, output, repairs, reportProgress);
+      const outputName = repairedFileName(entry.file.name);
+      updateProgress({stage: `Rechecking ${index + 1}/${state.entries.length}: ${outputName}`, current: 0, total: output.size, unit: "bytes"});
+      const outputModel = await loadIfc(output, reportProgress, outputName);
+      const semanticResult = verifyRepairedModel(outputModel, repairs);
+      const postAnalysis = await analyzeIfc(outputModel, reportProgress);
+      const result = {
+        ...byteResult,
+        ...semanticResult,
+        remainingSupportedMissing: postAnalysis.issues.length,
+      };
+      summary.expectedChanges += result.expectedChanges;
+      summary.successfulChanges += result.successfulChanges;
+      summary.unexpectedChanges += result.unexpectedChanges;
+      summary.remainingSupportedMissing += result.remainingSupportedMissing;
+      state.outputs.push({blob: output, name: outputName, result});
+    }
+    showCompletion(summary, state.outputs, output => downloadBlob(output.blob, output.name));
+  } catch (error) {
+    state.outputs = [];
+    showError(error);
+  } finally {
+    setBusy(false);
+  }
 }
 
 function restart() {
-  state.file = null; state.analysis = null; state.output = null; state.outputName = null; resetUi();
+  state.entries = [];
+  state.analysis = null;
+  state.outputs = [];
+  resetUi();
 }
 
 elements.choose.addEventListener("click", () => elements.input.click());
 elements.changeFile.addEventListener("click", () => elements.input.click());
 elements.drop.addEventListener("click", () => elements.input.click());
-elements.drop.addEventListener("keydown", event => { if (["Enter", " "].includes(event.key)) { event.preventDefault(); elements.input.click(); } });
-elements.input.addEventListener("change", () => { if (elements.input.files[0]) processFile(elements.input.files[0]); });
-for (const name of ["dragenter", "dragover"]) elements.drop.addEventListener(name, event => { event.preventDefault(); elements.drop.classList.add("drag"); });
-for (const name of ["dragleave", "drop"]) elements.drop.addEventListener(name, event => { event.preventDefault(); elements.drop.classList.remove("drag"); });
-elements.drop.addEventListener("drop", event => { const file = event.dataTransfer.files[0]; if (file) processFile(file); });
-elements.selectAll.addEventListener("change", () => { for (const issue of state.analysis.issues) if (issue.repairable) issue.selected = elements.selectAll.checked; renderResults(state.analysis, () => updateRepairButton(state.analysis)); });
+elements.drop.addEventListener("keydown", event => {
+  if (["Enter", " "].includes(event.key)) {
+    event.preventDefault();
+    elements.input.click();
+  }
+});
+elements.input.addEventListener("change", () => processFiles(elements.input.files));
+for (const name of ["dragenter", "dragover"]) {
+  elements.drop.addEventListener(name, event => {
+    event.preventDefault();
+    elements.drop.classList.add("drag");
+  });
+}
+for (const name of ["dragleave", "drop"]) {
+  elements.drop.addEventListener(name, event => {
+    event.preventDefault();
+    elements.drop.classList.remove("drag");
+  });
+}
+elements.drop.addEventListener("drop", event => processFiles(event.dataTransfer.files));
+elements.selectAll.addEventListener("change", () => {
+  for (const issue of state.analysis.issues) if (issue.repairable) issue.selected = elements.selectAll.checked;
+  renderResults(state.analysis, () => updateRepairButton(state.analysis));
+});
 elements.repair.addEventListener("click", repairSelected);
-elements.download.addEventListener("click", () => { if (state.output) downloadBlob(state.output, state.outputName); });
-for (const button of [elements.checkAnother, elements.restart, elements.errorRestart]) button.addEventListener("click", restart);
+for (const button of [elements.checkAnother, elements.restart, elements.errorRestart]) {
+  button.addEventListener("click", restart);
+}
 
-window.addEventListener("beforeunload", () => { state.output = null; });
-
+window.addEventListener("beforeunload", () => {
+  state.outputs = [];
+});

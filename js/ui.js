@@ -25,7 +25,7 @@ export const elements = {
   checkAnother: byId("check-another"),
   completion: byId("completion-card"),
   completionSummary: byId("completion-summary"),
-  download: byId("download-button"),
+  downloadList: byId("download-list"),
   restart: byId("restart-button"),
   error: byId("error-card"),
   errorMessage: byId("error-message"),
@@ -51,10 +51,13 @@ export function setStep(step) {
   });
 }
 
-export function showFile(file) {
+export function showFiles(files) {
   elements.selectCard.classList.add("has-file");
   elements.fileSummary.classList.remove("hidden");
-  elements.fileDetails.textContent = `${file.name} | ${formatBytes(file.size)} | Ready for local processing`;
+  const totalSize = files.reduce((sum, file) => sum + file.size, 0);
+  elements.fileDetails.textContent = files.length === 1
+    ? `${files[0].name} | ${formatBytes(totalSize)} | Ready for local processing`
+    : `${files.length.toLocaleString()} IFC files | ${formatBytes(totalSize)} total | Ready for sequential local processing`;
 }
 
 export function updateProgress({stage, current = 0, total = 0, unit = "items"}) {
@@ -88,6 +91,7 @@ export function renderResults(analysis, onSelectionChanged) {
   elements.schema.textContent = analysis.schema;
   const counts = analysis.counts || {};
   elements.signatureSummary.textContent =
+    `Files checked: ${analysis.successfulFiles.toLocaleString()} of ${analysis.filesScanned.toLocaleString()} · ` +
     `Body / SweptSolid: ${(counts.bodySweptSolid || 0).toLocaleString()} · ` +
     `Body / Tessellation: ${(counts.bodyTessellation || 0).toLocaleString()} · ` +
     `FootPrint / Curve2D: ${(counts.footprintCurve2D || 0).toLocaleString()}`;
@@ -114,6 +118,7 @@ export function renderResults(analysis, onSelectionChanged) {
     pill.textContent = issue.status.toUpperCase();
     outcome.append(pill);
     row.append(outcome);
+    cell(row, issue.fileName);
     cell(row, `#${issue.id}`);
     cell(row, issue.identifier);
     cell(row, issue.representationType);
@@ -125,10 +130,17 @@ export function renderResults(analysis, onSelectionChanged) {
     elements.body.append(row);
   }
 
-  if (!analysis.issues.length) {
+  for (const fileError of analysis.fileErrors) {
+    const row = document.createElement("tr");
+    const td = cell(row, `${fileError.fileName}: ${fileError.message}`, "file-error");
+    td.colSpan = 11;
+    elements.body.append(row);
+  }
+
+  if (!analysis.issues.length && !analysis.fileErrors.length) {
     const row = document.createElement("tr");
     const td = cell(row, analysis.unsupportedMessage || "No supported missing geometry references were detected.");
-    td.colSpan = 10;
+    td.colSpan = 11;
     elements.body.append(row);
   }
   updateRepairButton(analysis);
@@ -144,14 +156,24 @@ export function updateRepairButton(analysis) {
   elements.selectAll.disabled = analysis.repairable === 0;
 }
 
-export function showCompletion(result, filename) {
+export function showCompletion(result, outputs, onDownload) {
   elements.progressCard.classList.add("hidden");
   elements.results.classList.add("hidden");
   elements.completion.classList.remove("hidden");
   elements.completionSummary.textContent =
     `${result.successfulChanges.toLocaleString()} of ${result.expectedChanges.toLocaleString()} planned context repair${result.expectedChanges === 1 ? "" : "s"} verified; ` +
     `${result.unexpectedChanges.toLocaleString()} unexpected changes; ` +
-    `${result.remainingSupportedMissing.toLocaleString()} supported missing context${result.remainingSupportedMissing === 1 ? "" : "s"} remain. ${filename} is ready to download.`;
+    `${result.remainingSupportedMissing.toLocaleString()} supported missing context${result.remainingSupportedMissing === 1 ? "" : "s"} remain. ` +
+    `${outputs.length.toLocaleString()} repaired IFC file${outputs.length === 1 ? "" : "s"} ready to download.`;
+  elements.downloadList.replaceChildren();
+  for (const output of outputs) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "button primary";
+    button.textContent = `Download ${output.name}`;
+    button.addEventListener("click", () => onDownload(output));
+    elements.downloadList.append(button);
+  }
   setStep(3);
 }
 
@@ -172,6 +194,7 @@ export function resetUi() {
   elements.completion.classList.add("hidden");
   elements.error.classList.add("hidden");
   elements.body.replaceChildren();
+  elements.downloadList.replaceChildren();
   setStep(1);
 }
 
