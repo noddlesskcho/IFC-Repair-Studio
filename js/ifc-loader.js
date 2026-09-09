@@ -5,6 +5,10 @@ const DETAILED_TYPES = new Set([
   "IFCGEOMETRICREPRESENTATIONSUBCONTEXT",
   "IFCSHAPEREPRESENTATION",
   "IFCPRODUCTDEFINITIONSHAPE",
+  "IFCSHAPEASPECT",
+  "IFCPRESENTATIONLAYERASSIGNMENT",
+  "IFCPRESENTATIONLAYERWITHSTYLE",
+  "IFCREPRESENTATIONMAP",
 ]);
 
 export class IfcInputError extends Error {}
@@ -75,14 +79,20 @@ function compactDetailedRecord(record) {
     record.args = [record.args[0], record.args[1], record.args[2], firstItem ? `#${firstItem}` : ""];
   } else if (record.type === "IFCPRODUCTDEFINITIONSHAPE") {
     record.args = [record.args[0], record.args[1], record.args[2]];
+  } else if (record.type === "IFCSHAPEASPECT") {
+    record.args = [record.args[0], record.args[1], record.args[2], record.args[3], record.args[4]];
+  } else if (["IFCPRESENTATIONLAYERASSIGNMENT", "IFCPRESENTATIONLAYERWITHSTYLE"].includes(record.type)) {
+    record.args = [record.args[0], record.args[1], record.args[2], record.args[3]];
+  } else if (record.type === "IFCREPRESENTATIONMAP") {
+    record.args = [record.args[0], record.args[1]];
   } else if (record.type === "IFCPROJECT") {
     record.args = Array.from({length: 8}, (_, index) => record.args[index]);
   }
   return record;
 }
 
-export async function loadIfc(file, onProgress = () => {}) {
-  if (!file || !file.name?.toLowerCase().endsWith(".ifc")) {
+export async function loadIfc(file, onProgress = () => {}, fileName = file?.name) {
+  if (!file || !fileName?.toLowerCase().endsWith(".ifc")) {
     throw new IfcInputError("Select an uncompressed .ifc file.");
   }
   if (!file.size) throw new IfcInputError("The selected IFC is empty.");

@@ -19,6 +19,7 @@ export const elements = {
   repairable: byId("repairable-count"),
   review: byId("review-count"),
   schema: byId("schema-value"),
+  signatureSummary: byId("signature-summary"),
   selectAll: byId("select-all"),
   repair: byId("repair-button"),
   checkAnother: byId("check-another"),
@@ -85,6 +86,11 @@ export function renderResults(analysis, onSelectionChanged) {
   elements.repairable.textContent = analysis.repairable.toLocaleString();
   elements.review.textContent = analysis.reviewOnly.toLocaleString();
   elements.schema.textContent = analysis.schema;
+  const counts = analysis.counts || {};
+  elements.signatureSummary.textContent =
+    `Body / SweptSolid: ${(counts.bodySweptSolid || 0).toLocaleString()} · ` +
+    `Body / Tessellation: ${(counts.bodyTessellation || 0).toLocaleString()} · ` +
+    `FootPrint / Curve2D: ${(counts.footprintCurve2D || 0).toLocaleString()}`;
   elements.body.replaceChildren();
 
   for (const issue of analysis.issues) {
@@ -105,21 +111,24 @@ export function renderResults(analysis, onSelectionChanged) {
     const outcome = document.createElement("td");
     const pill = document.createElement("span");
     pill.className = `pill ${issue.repairable ? "safe" : "review"}`;
-    pill.textContent = issue.repairable ? "READY TO REPAIR" : "REPORT ONLY";
+    pill.textContent = issue.status.toUpperCase();
     outcome.append(pill);
     row.append(outcome);
     cell(row, `#${issue.id}`);
-    cell(row, issue.productType);
-    cell(row, issue.productName);
-    cell(row, `${issue.identifier} / ${issue.representationType}`);
-    cell(row, issue.details);
+    cell(row, issue.identifier);
+    cell(row, issue.representationType);
+    cell(row, issue.currentContext);
+    cell(row, issue.proposedContext);
+    cell(row, issue.candidateContextId ? `#${issue.candidateContextId}` : "—");
+    cell(row, issue.referencedBy.join(", "));
+    cell(row, issue.reason);
     elements.body.append(row);
   }
 
   if (!analysis.issues.length) {
     const row = document.createElement("tr");
     const td = cell(row, analysis.unsupportedMessage || "No supported missing geometry references were detected.");
-    td.colSpan = 7;
+    td.colSpan = 10;
     elements.body.append(row);
   }
   updateRepairButton(analysis);
@@ -139,7 +148,10 @@ export function showCompletion(result, filename) {
   elements.progressCard.classList.add("hidden");
   elements.results.classList.add("hidden");
   elements.completion.classList.remove("hidden");
-  elements.completionSummary.textContent = `${result.repaired.toLocaleString()} geometry reference${result.repaired === 1 ? "" : "s"} repaired and verified. ${filename} is ready to download.`;
+  elements.completionSummary.textContent =
+    `${result.successfulChanges.toLocaleString()} of ${result.expectedChanges.toLocaleString()} planned context repair${result.expectedChanges === 1 ? "" : "s"} verified; ` +
+    `${result.unexpectedChanges.toLocaleString()} unexpected changes; ` +
+    `${result.remainingSupportedMissing.toLocaleString()} supported missing context${result.remainingSupportedMissing === 1 ? "" : "s"} remain. ${filename} is ready to download.`;
   setStep(3);
 }
 

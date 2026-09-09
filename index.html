@@ -8,7 +8,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>IFC+SG Geometry Reference Repair Assistant</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23175cd3'/%3E%3Cpath d='M18 20h28v7H25v7h17v7H25v11h-7z' fill='white'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="./css/app.css?v=1.0.0-r4">
+  <link rel="stylesheet" href="./css/app.css?v=1.0.0-r6">
 </head>
 <body>
   <header class="site-header">
@@ -51,7 +51,7 @@
 
     <section class="hidden" id="results-section">
       <div class="metrics">
-        <article class="metric"><strong id="issues-count">0</strong><span>Geometry references found</span></article>
+        <article class="metric"><strong id="issues-count">0</strong><span>Missing ContextOfItems detected</span></article>
         <article class="metric"><strong id="repairable-count">0</strong><span>Ready to repair</span></article>
         <article class="metric amber"><strong id="review-count">0</strong><span>Unable to repair automatically</span></article>
         <article class="metric"><strong id="schema-value">-</strong><span>IFC schema</span></article>
@@ -59,12 +59,12 @@
 
       <section class="card">
         <div class="section-heading">
-          <div><h2>Supported repair results</h2><p>Only direct product representations in the Version 1 browser scope are listed.</p></div>
+          <div><h2>Supported repair results</h2><p id="signature-summary">All supported shape representations are checked, including ShapeAspect and layer-assigned representations.</p></div>
           <label class="select-all"><input id="select-all" type="checkbox" checked> Select all safe repairs</label>
         </div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Apply</th><th>Outcome</th><th>STEP ID</th><th>Element</th><th>Name</th><th>Representation</th><th>Details</th></tr></thead>
+            <thead><tr><th>Apply</th><th>Status</th><th>STEP ID</th><th>Identifier</th><th>Type</th><th>Current context</th><th>Proposed context</th><th>Context STEP ID</th><th>Referenced by</th><th>Reason</th></tr></thead>
             <tbody id="results-body"></tbody>
           </table>
         </div>
@@ -97,10 +97,10 @@
   </main>
 
   <footer>
-    <p><strong>Browser repair scope:</strong> IFC4 direct-product Body/SweptSolid and FootPrint/Curve2D missing-context repairs with uniquely proven project contexts. Body/Tessellation remains report-only pending compatibility approval.</p>
+    <p><strong>Browser repair scope:</strong> IFC4 Body/SweptSolid, Body/Tessellation, and FootPrint/Curve2D missing-context repairs when exactly one compatible project-connected context is available.</p>
     <p>This tool is not a complete IFC validator or CORENET X compliance checker.</p>
   </footer>
-  <script type="module" src="./js/app.js?v=1.0.0-r4"></script>
+  <script type="module" src="./js/app.js?v=1.0.0-r6"></script>
 </body>
 </html>
 

@@ -1,7 +1,13 @@
-import {refs, stepString} from "./ifc-loader.js?v=1.0.0-r4";
+import {refs, stepString} from "./ifc-loader.js?v=1.0.0-r6";
 
 const SUPPORTED = new Set(["body|sweptsolid", "body|tessellation", "footprint|curve2d"]);
-const PRODUCTION_SAFE = new Set(["body|sweptsolid", "footprint|curve2d"]);
+const REFERENCE_LABELS = new Map([
+  ["IFCPRODUCTDEFINITIONSHAPE", "IfcProductDefinitionShape"],
+  ["IFCSHAPEASPECT", "IfcShapeAspect"],
+  ["IFCPRESENTATIONLAYERASSIGNMENT", "IfcPresentationLayerAssignment"],
+  ["IFCPRESENTATIONLAYERWITHSTYLE", "IfcPresentationLayerWithStyle"],
+  ["IFCREPRESENTATIONMAP", "IfcRepresentationMap"],
+]);
 const CLASS_NAMES = new Map([
   ["IFCSLAB", "IfcSlab"], ["IFCWALL", "IfcWall"],
   ["IFCOPENINGELEMENT", "IfcOpeningElement"], ["IFCCOVERING", "IfcCovering"],
@@ -12,7 +18,7 @@ const normalized = value => String(value || "").toLowerCase();
 const enumValue = value => String(value || "").replace(/^\.|\.$/g, "").toUpperCase();
 const oneRef = value => refs(value)[0] ?? null;
 const signatureKey = record => `${normalized(stepString(record.args[1]))}|${normalized(stepString(record.args[2]))}`;
-const displayClass = type => CLASS_NAMES.get(type) || `Ifc${type.slice(3).toLowerCase()}`;
+const displayClass = type => CLASS_NAMES.get(type) || (type?.startsWith("IFC") ? `Ifc${type.slice(3).toLowerCase()}` : "Unknown");
 
 function buildContextIndex(model) {
   const projectRoots = new Set();
@@ -23,146 +29,188 @@ function buildContextIndex(model) {
   for (const record of model.detailed.values()) {
     if (!["IFCGEOMETRICREPRESENTATIONCONTEXT", "IFCGEOMETRICREPRESENTATIONSUBCONTEXT"].includes(record.type)) continue;
     contexts.set(record.id, {
-      id: record.id, record,
-      identifier: stepString(record.args[0]), contextType: stepString(record.args[1]),
-      dimension: Number(record.args[2]), parentId: record.type.endsWith("SUBCONTEXT") ? oneRef(record.args[6]) : null,
-      targetView: record.type.endsWith("SUBCONTEXT") ? enumValue(record.args[8]) : null,
+      id: record.id,
+      entityType: record.type,
+      identifier: stepString(record.args[0]),
+      contextType: stepString(record.args[1]),
+      dimension: Number(record.args[2]),
+      parentId: record.type === "IFCGEOMETRICREPRESENTATIONSUBCONTEXT" ? oneRef(record.args[6]) : null,
+      targetView: record.type === "IFCGEOMETRICREPRESENTATIONSUBCONTEXT" ? enumValue(record.args[8]) : null,
+      connected: false,
     });
   }
-  const resolve = context => {
+
+  const connected = (context, visiting = new Set()) => {
+    if (projectRoots.has(context.id)) return true;
+    if (!context.parentId || visiting.has(context.id)) return false;
+    const parent = contexts.get(context.parentId);
+    if (!parent) return false;
+    visiting.add(context.id);
+    return connected(parent, visiting);
+  };
+  for (const context of contexts.values()) {
     const parent = contexts.get(context.parentId);
     if (!Number.isFinite(context.dimension)) context.dimension = parent?.dimension ?? null;
     if (!context.contextType) context.contextType = parent?.contextType ?? null;
-    context.connected = projectRoots.has(context.id) || projectRoots.has(context.parentId) || Boolean(parent?.connected);
-  };
-  contexts.forEach(resolve); contexts.forEach(resolve);
+    context.connected = connected(context);
+  }
   return contexts;
 }
 
 function compatibleContexts(contexts, identifier, representationType) {
-  const id = normalized(identifier), type = normalized(representationType);
+  const id = normalized(identifier);
+  const type = normalized(representationType);
   return [...contexts.values()].filter(context => {
     if (!context.connected || normalized(context.identifier) !== id) return false;
-    const view = context.targetView || "";
     if (id === "body" && ["sweptsolid", "tessellation"].includes(type)) {
-      return normalized(context.contextType) === "model" && context.dimension === 3 && ["", "MODEL_VIEW"].includes(view);
+      return normalized(context.contextType) === "model" && context.dimension === 3 &&
+        (context.entityType === "IFCGEOMETRICREPRESENTATIONCONTEXT" || context.targetView === "MODEL_VIEW");
     }
     if (id === "footprint" && type === "curve2d") {
-      return [2, 3].includes(context.dimension) && ["", "PLAN_VIEW", "MODEL_VIEW"].includes(view);
+      return [2, 3].includes(context.dimension) &&
+        (context.entityType === "IFCGEOMETRICREPRESENTATIONCONTEXT" || ["PLAN_VIEW", "MODEL_VIEW"].includes(context.targetView));
     }
     return false;
   });
+
+}
+
+function buildReferenceIndex(model) {
+  const index = new Map();
+  const add = (targetId, source) => {
+    if (!index.has(targetId)) index.set(targetId, []);
+    index.get(targetId).push(source);
+  };
+  for (const record of model.detailed.values()) {
+    let targetIds = [];
+    if (record.type === "IFCPRODUCTDEFINITIONSHAPE") targetIds = refs(record.args[2]);
+    else if (record.type === "IFCSHAPEASPECT") targetIds = refs(record.args[0]);
+    else if (["IFCPRESENTATIONLAYERASSIGNMENT", "IFCPRESENTATIONLAYERWITHSTYLE"].includes(record.type)) targetIds = refs(record.args[2]);
+    else if (record.type === "IFCREPRESENTATIONMAP") targetIds = refs(record.args[1]);
+    else continue;
+    for (const targetId of targetIds) {
+      if (model.entities.get(targetId) === "IFCSHAPEREPRESENTATION") {
+        add(targetId, {id: record.id, type: record.type, label: REFERENCE_LABELS.get(record.type)});
+      }
+    }
+  }
+  return index;
+}
+
+function buildProductIndex(model) {
+  const byDefinition = new Map();
+  for (const record of model.productCandidates) {
+    const definitionId = oneRef(record.args[6]);
+    if (!definitionId) continue;
+    if (!byDefinition.has(definitionId)) byDefinition.set(definitionId, []);
+    byDefinition.get(definitionId).push({
+      id: record.id,
+      type: record.type,
+      globalId: stepString(record.args[0]),
+      name: stepString(record.args[2]),
+    });
+  }
+  return byDefinition;
+}
+
+function productForRepresentation(referenceSources, model, productsByDefinition) {
+  for (const source of referenceSources) {
+    if (source.type === "IFCPRODUCTDEFINITIONSHAPE") {
+      const product = productsByDefinition.get(source.id)?.[0];
+      if (product) return product;
+    }
+    if (source.type === "IFCSHAPEASPECT") {
+      const aspect = model.detailed.get(source.id);
+      const definitionId = oneRef(aspect?.args[4]);
+      const product = productsByDefinition.get(definitionId)?.[0];
+      if (product) return product;
+    }
+  }
+  return null;
+}
+
+function summaryCounts(issues) {
+  const bySignature = {bodySweptSolid: 0, bodyTessellation: 0, footprintCurve2D: 0};
+  for (const issue of issues) {
+    if (issue.signature === "body|sweptsolid") bySignature.bodySweptSolid += 1;
+    else if (issue.signature === "body|tessellation") bySignature.bodyTessellation += 1;
+    else if (issue.signature === "footprint|curve2d") bySignature.footprintCurve2D += 1;
+  }
+  return bySignature;
 }
 
 export async function analyzeIfc(model, onProgress = () => {}) {
   if (model.schema !== "IFC4") {
     return {schema: model.schema, issues: [], productsScanned: 0, representationsScanned: 0,
-      repairable: 0, reviewOnly: 0,
+      repairable: 0, reviewOnly: 0, counts: summaryCounts([]),
       unsupportedMessage: `This file uses ${model.schema}. Browser repair is limited to IFC4.`};
   }
-  onProgress({stage: "Building direct-product ownership index", current: 0, total: 1, unit: "items"});
+
+  onProgress({stage: "Indexing representation contexts and references", current: 0, total: 1, unit: "items"});
   const contexts = buildContextIndex(model);
-  const pds = new Map();
-  for (const record of model.detailed.values()) {
-    if (record.type === "IFCPRODUCTDEFINITIONSHAPE") pds.set(record.id, refs(record.args[2]));
-  }
-  const products = [];
-  const ownerProducts = new Map();
-  for (const record of model.productCandidates) {
-    const ownerId = oneRef(record.args[6]);
-    if (!pds.has(ownerId)) continue;
-    const product = {id: record.id, type: record.type, ownerId, globalId: stepString(record.args[0]), name: stepString(record.args[2])};
-    products.push(product);
-    if (!ownerProducts.has(ownerId)) ownerProducts.set(ownerId, []);
-    ownerProducts.get(ownerId).push(product);
-  }
-
-  const directRepresentations = [];
-  for (const [ownerId, repIds] of pds) {
-    const owners = ownerProducts.get(ownerId) || [];
-    if (!owners.length) continue;
-    const product = owners[0];
-    for (const repId of repIds) {
-      const record = model.detailed.get(repId);
-      if (record?.type === "IFCSHAPEREPRESENTATION") {
-        directRepresentations.push({record, product, ownerId, ownerCount: owners.length});
-      }
-    }
-  }
-
-  const peerContexts = new Map();
-  const productPeerContexts = new Map();
-  for (const {record, product} of directRepresentations) {
-    const contextId = oneRef(record.args[0]);
-    if (!contexts.has(contextId)) continue;
-    const firstItem = refs(record.args[3])[0];
-    const itemType = normalized(model.entities.get(firstItem));
-    const semantic = `${signatureKey(record)}|${itemType}`;
-    const productSemantic = `${normalized(product.type)}|${semantic}`;
-    if (!peerContexts.has(semantic)) peerContexts.set(semantic, new Map());
-    if (!productPeerContexts.has(productSemantic)) productPeerContexts.set(productSemantic, new Map());
-    peerContexts.get(semantic).set(contextId, (peerContexts.get(semantic).get(contextId) || 0) + 1);
-    productPeerContexts.get(productSemantic).set(contextId, (productPeerContexts.get(productSemantic).get(contextId) || 0) + 1);
-  }
-
+  const referenceIndex = buildReferenceIndex(model);
+  const productsByDefinition = buildProductIndex(model);
+  const representations = [...model.detailed.values()].filter(record => record.type === "IFCSHAPEREPRESENTATION");
   const issues = [];
-  for (let index = 0; index < directRepresentations.length; index += 1) {
-    const {record, product, ownerId, ownerCount} = directRepresentations[index];
-    if (record.firstToken !== "$" || !SUPPORTED.has(signatureKey(record))) continue;
+
+  for (let index = 0; index < representations.length; index += 1) {
+    const record = representations[index];
+    const signature = signatureKey(record);
+    if (record.firstToken !== "$" || !SUPPORTED.has(signature)) continue;
     const identifier = stepString(record.args[1]);
     const representationType = stepString(record.args[2]);
-    const firstItem = refs(record.args[3])[0];
-    const itemType = normalized(model.entities.get(firstItem));
-    const semantic = `${signatureKey(record)}|${itemType}`;
-    const productSemantic = `${normalized(product.type)}|${semantic}`;
     const eligible = compatibleContexts(contexts, identifier, representationType);
-    const semanticPeers = peerContexts.get(semantic) || new Map();
-    const productPeers = productPeerContexts.get(productSemantic) || new Map();
-    const siblingIds = pds.get(ownerId) || [];
-    const siblingEvidence = siblingIds.some(id => {
-      if (id === record.id) return false;
-      const sibling = model.detailed.get(id);
-      return sibling?.type === "IFCSHAPEREPRESENTATION" &&
-        normalized(stepString(sibling.args[1])) === normalized(identifier) &&
-        eligible.some(context => context.id === oneRef(sibling.args[0]));
-    });
-    const conflicts = [];
-    if (eligible.length !== 1) conflicts.push(`${eligible.length} compatible project contexts found; exactly one is required.`);
-    if (semanticPeers.size > 1 || productPeers.size > 1) conflicts.push("Equivalent valid representations use conflicting contexts.");
     const candidate = eligible.length === 1 ? eligible[0] : null;
-    const peerCount = candidate ? (productPeers.get(candidate.id) || semanticPeers.get(candidate.id) || 0) : 0;
-    const suppliedCleanPattern = normalized(product.type) === "ifcslab" &&
-      candidate?.targetView === "MODEL_VIEW" && (
-        (signatureKey(record) === "body|sweptsolid" && itemType === "ifcextrudedareasolid") ||
-        (signatureKey(record) === "footprint|curve2d" && itemType === "ifcindexedpolycurve")
-      );
-    const strongEvidence = siblingEvidence || peerCount > 0 || suppliedCleanPattern;
-    if (!strongEvidence) conflicts.push("No matching valid sibling or exact semantic peer proves the candidate context.");
-    if (ownerCount !== 1) conflicts.push(`${ownerCount} products share this product definition shape; ownership is ambiguous.`);
-    const productionApproved = PRODUCTION_SAFE.has(signatureKey(record));
-    if (!productionApproved) conflicts.push("This signature is report-only in the current production compatibility policy.");
-    const repairable = Boolean(candidate && strongEvidence && productionApproved && conflicts.length === 0);
+    const referenceSources = referenceIndex.get(record.id) || [];
+    const referenceTypes = [...new Set(referenceSources.map(source => source.label))];
+    const product = productForRepresentation(referenceSources, model, productsByDefinition);
+    const firstItem = refs(record.args[3])[0];
+    const repairable = Boolean(candidate);
+    const status = repairable ? "Repairable" : eligible.length ? "Review Required" : "No Compatible Context";
+    const reason = repairable
+      ? `Exactly one compatible project-connected context was found: #${candidate.id} ${candidate.identifier} / ${candidate.contextType}.`
+      : eligible.length
+        ? `${eligible.length} compatible project-connected contexts were found (${eligible.map(context => `#${context.id}`).join(", ")}); automatic repair requires exactly one.`
+        : `No compatible project-connected ${identifier} context was found.`;
     issues.push({
-      id: record.id, productId: product.id, globalId: product.globalId, productType: displayClass(product.type),
-      productName: product.name || "â€”", identifier, representationType, itemType: model.entities.get(firstItem) || "Unknown",
-      candidateContextId: candidate?.id || null, repairable, selected: repairable,
-      details: repairable
-        ? `Unique project context #${candidate.id} proven by ${suppliedCleanPattern && !peerCount && !siblingEvidence ? "the validated clean-sample slab pattern" : `${peerCount || 1} matching representation(s)`}.`
-        : conflicts.join(" "),
-      tokenStart: record.firstTokenStart, tokenEnd: record.firstTokenEnd, recordStart: record.start, recordEnd: record.end,
+      id: record.id,
+      signature,
+      productId: product?.id || null,
+      globalId: product?.globalId || null,
+      productType: product ? displayClass(product.type) : referenceTypes[0] || "Unresolved reference",
+      productName: product?.name || "—",
+      identifier,
+      representationType,
+      itemType: model.entities.get(firstItem) || "Unknown",
+      currentContext: "Missing ($)",
+      candidateContextId: candidate?.id || null,
+      candidateContextType: candidate?.entityType || null,
+      proposedContext: candidate ? `#${candidate.id} ${candidate.identifier} / ${candidate.contextType}` : "—",
+      referencedBy: referenceTypes.length ? referenceTypes : ["Unindexed representation reference"],
+      repairable,
+      status,
+      selected: repairable,
+      reason,
+      details: reason,
+      tokenStart: record.firstTokenStart,
+      tokenEnd: record.firstTokenEnd,
+      recordStart: record.start,
+      recordEnd: record.end,
     });
     if (index % 1000 === 0) {
-      onProgress({stage: "Resolving supported geometry references", current: index, total: directRepresentations.length, unit: "items"});
+      onProgress({stage: "Checking all shape representations", current: index, total: representations.length, unit: "items"});
       await new Promise(resolve => setTimeout(resolve, 0));
     }
   }
-  onProgress({stage: "Review complete", current: directRepresentations.length, total: directRepresentations.length, unit: "items"});
+  onProgress({stage: "Review complete", current: representations.length, total: representations.length, unit: "items"});
   return {
-    schema: model.schema, issues, productsScanned: products.length,
-    representationsScanned: directRepresentations.length,
+    schema: model.schema,
+    issues,
+    productsScanned: model.productCandidates.length,
+    representationsScanned: representations.length,
     repairable: issues.filter(issue => issue.repairable).length,
     reviewOnly: issues.filter(issue => !issue.repairable).length,
+    counts: summaryCounts(issues),
     unsupportedMessage: null,
   };
 }
-

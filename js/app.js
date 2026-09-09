@@ -1,8 +1,8 @@
-import {loadIfc} from "./ifc-loader.js?v=1.0.0-r4";
-import {analyzeIfc} from "./ifc-analyzer.js?v=1.0.0-r4";
-import {applyRepairs, verifyRepairs} from "./ifc-fixer.js?v=1.0.0-r4";
-import {downloadBlob, repairedFileName} from "./ifc-exporter.js?v=1.0.0-r4";
-import {elements, renderResults, resetUi, setStep, showCompletion, showError, showFile, updateProgress, updateRepairButton} from "./ui.js?v=1.0.0-r4";
+import {loadIfc} from "./ifc-loader.js?v=1.0.0-r6";
+import {analyzeIfc} from "./ifc-analyzer.js?v=1.0.0-r6";
+import {applyRepairs, verifyRepairedModel, verifyRepairs} from "./ifc-fixer.js?v=1.0.0-r6";
+import {downloadBlob, repairedFileName} from "./ifc-exporter.js?v=1.0.0-r6";
+import {elements, renderResults, resetUi, setStep, showCompletion, showError, showFile, updateProgress, updateRepairButton} from "./ui.js?v=1.0.0-r6";
 
 const state = {file: null, analysis: null, output: null, outputName: null, busy: false};
 
@@ -31,8 +31,20 @@ async function repairSelected() {
   try {
     const selected = state.analysis.issues.filter(issue => issue.selected && issue.repairable);
     const {output, repairs} = await applyRepairs(state.file, selected, updateProgress);
-    const result = await verifyRepairs(state.file, output, repairs, updateProgress);
-    state.output = output; state.outputName = repairedFileName(state.file.name); showCompletion(result, state.outputName);
+    const byteResult = await verifyRepairs(state.file, output, repairs, updateProgress);
+    state.outputName = repairedFileName(state.file.name);
+    updateProgress({stage: "Rechecking repaired IFC", current: 0, total: output.size, unit: "bytes"});
+    const outputModel = await loadIfc(output, updateProgress, state.outputName);
+    const semanticResult = verifyRepairedModel(outputModel, repairs);
+    const postAnalysis = await analyzeIfc(outputModel, updateProgress);
+    const result = {
+      ...byteResult,
+      ...semanticResult,
+      remainingSupportedMissing: postAnalysis.issues.length,
+      remainingRepairable: postAnalysis.repairable,
+    };
+    state.output = output;
+    showCompletion(result, state.outputName);
   } catch (error) { showError(error); }
   finally { setBusy(false); }
 }
