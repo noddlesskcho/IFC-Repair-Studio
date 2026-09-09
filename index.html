@@ -8,7 +8,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>IFC+SG IfcShapeRepresentation Repair Tool</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23175cd3'/%3E%3Cpath d='M18 20h28v7H25v7h17v7H25v11h-7z' fill='white'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="./css/app.css?v=1.0.0-r7">
+  <link rel="stylesheet" href="./css/app.css?v=1.0.0-r8">
 </head>
 <body>
   <header class="site-header">
@@ -62,22 +62,32 @@
           <div><h2>Supported repair results</h2><p id="signature-summary">All supported shape representations are checked, including ShapeAspect and layer-assigned representations.</p></div>
           <label class="select-all"><input id="select-all" type="checkbox" checked> Select all safe repairs</label>
         </div>
+        <div class="results-controls">
+          <label for="file-filter">View results for</label>
+          <select id="file-filter" aria-label="Choose a file to view"></select>
+          <span id="page-summary" class="muted" aria-live="polite"></span>
+        </div>
         <div class="table-wrap">
           <table>
             <thead><tr><th>Apply</th><th>Status</th><th>File</th><th>STEP ID</th><th>Identifier</th><th>Type</th><th>Current context</th><th>Proposed context</th><th>Context STEP ID</th><th>Referenced by</th><th>Reason</th></tr></thead>
             <tbody id="results-body"></tbody>
           </table>
         </div>
+        <nav class="pagination" aria-label="Issue pages">
+          <button id="previous-page" class="button" type="button">Previous</button>
+          <span id="page-number">Page 1 of 1</span>
+          <button id="next-page" class="button" type="button">Next</button>
+        </nav>
         <div class="actions">
           <button id="check-another" class="button" type="button">Check another IFC</button>
-          <button id="repair-button" class="button primary" type="button">Repair selected issues</button>
+          <button id="repair-button" class="button primary" type="button">Repair all files</button>
         </div>
       </section>
     </section>
 
     <section class="card success hidden" id="completion-card" aria-live="polite">
       <p class="success-mark" aria-hidden="true">&#10003;</p>
-      <h2>Repaired IFC files ready</h2>
+      <h2>Repaired IFC ZIP ready</h2>
       <p id="completion-summary"></p>
       <ul>
         <li>Only selected <code>IfcShapeRepresentation.ContextOfItems</code> values were changed.</li>
@@ -100,7 +110,7 @@
     <p><strong>Browser repair scope:</strong> IFC4 Body/SweptSolid, Body/Tessellation, and FootPrint/Curve2D missing-context repairs when exactly one compatible project-connected context is available.</p>
     <p>This tool is not a complete IFC validator or CORENET X compliance checker.</p>
   </footer>
-  <script type="module" src="./js/app.js?v=1.0.0-r7"></script>
+  <script type="module" src="./js/app.js?v=1.0.0-r8"></script>
 </body>
 </html>
 

@@ -1,4 +1,8 @@
+import {paginateIssues, RESULTS_PAGE_SIZE} from "./ifc-batch.js?v=1.0.0-r8";
+
 const byId = id => document.getElementById(id);
+
+const resultsView = {analysis: null, onSelectionChanged: null, fileIndex: "all", page: 1};
 
 export const elements = {
   selectCard: byId("select-card"),
@@ -21,6 +25,11 @@ export const elements = {
   schema: byId("schema-value"),
   signatureSummary: byId("signature-summary"),
   selectAll: byId("select-all"),
+  fileFilter: byId("file-filter"),
+  pageSummary: byId("page-summary"),
+  pageNumber: byId("page-number"),
+  previousPage: byId("previous-page"),
+  nextPage: byId("next-page"),
   repair: byId("repair-button"),
   checkAnother: byId("check-another"),
   completion: byId("completion-card"),
@@ -81,33 +90,39 @@ function cell(row, value, className = "") {
   return td;
 }
 
-export function renderResults(analysis, onSelectionChanged) {
-  elements.progressCard.classList.add("hidden");
-  elements.results.classList.remove("hidden");
-  elements.completion.classList.add("hidden");
-  elements.issues.textContent = analysis.issues.length.toLocaleString();
-  elements.repairable.textContent = analysis.repairable.toLocaleString();
-  elements.review.textContent = analysis.reviewOnly.toLocaleString();
-  elements.schema.textContent = analysis.schema;
-  const counts = analysis.counts || {};
-  elements.signatureSummary.textContent =
-    `Files checked: ${analysis.successfulFiles.toLocaleString()} of ${analysis.filesScanned.toLocaleString()} · ` +
-    `Body / SweptSolid: ${(counts.bodySweptSolid || 0).toLocaleString()} · ` +
-    `Body / Tessellation: ${(counts.bodyTessellation || 0).toLocaleString()} · ` +
-    `FootPrint / Curve2D: ${(counts.footprintCurve2D || 0).toLocaleString()}`;
+function populateFileFilter(analysis) {
+  elements.fileFilter.replaceChildren();
+  const all = document.createElement("option");
+  all.value = "all";
+  all.textContent = `All files (${analysis.files.length.toLocaleString()})`;
+  elements.fileFilter.append(all);
+  for (const file of analysis.files) {
+    const option = document.createElement("option");
+    option.value = String(file.fileIndex);
+    option.textContent = `${file.fileName} (${file.issueCount.toLocaleString()} issue${file.issueCount === 1 ? "" : "s"})`;
+    elements.fileFilter.append(option);
+  }
+  elements.fileFilter.value = resultsView.fileIndex;
+}
+
+function renderResultsPage() {
+  const analysis = resultsView.analysis;
+  if (!analysis) return;
+  const page = paginateIssues(analysis.issues, resultsView.fileIndex, resultsView.page, RESULTS_PAGE_SIZE);
+  resultsView.page = page.currentPage;
   elements.body.replaceChildren();
 
-  for (const issue of analysis.issues) {
+  for (const issue of page.items) {
     const row = document.createElement("tr");
     const selectCell = document.createElement("td");
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
     checkbox.checked = issue.selected;
     checkbox.disabled = !issue.repairable;
-    checkbox.setAttribute("aria-label", `Apply repair to #${issue.id}`);
+    checkbox.setAttribute("aria-label", `Apply repair to ${issue.fileName} #${issue.id}`);
     checkbox.addEventListener("change", () => {
       issue.selected = checkbox.checked;
-      onSelectionChanged();
+      resultsView.onSelectionChanged();
     });
     selectCell.append(checkbox);
     row.append(selectCell);
@@ -130,33 +145,66 @@ export function renderResults(analysis, onSelectionChanged) {
     elements.body.append(row);
   }
 
-  for (const fileError of analysis.fileErrors) {
+  const visibleErrors = analysis.fileErrors.filter(error =>
+    resultsView.fileIndex === "all" || error.fileIndex === Number(resultsView.fileIndex));
+  for (const fileError of visibleErrors) {
     const row = document.createElement("tr");
     const td = cell(row, `${fileError.fileName}: ${fileError.message}`, "file-error");
     td.colSpan = 11;
     elements.body.append(row);
   }
 
-  if (!analysis.issues.length && !analysis.fileErrors.length) {
+  if (!page.totalItems && !visibleErrors.length) {
     const row = document.createElement("tr");
-    const td = cell(row, analysis.unsupportedMessage || "No supported missing geometry references were detected.");
+    const td = cell(row, analysis.unsupportedMessage || "No supported missing geometry references were detected for this file.");
     td.colSpan = 11;
     elements.body.append(row);
   }
+
+  const scope = resultsView.fileIndex === "all"
+    ? "across all files"
+    : `in ${analysis.files[Number(resultsView.fileIndex)]?.fileName || "this file"}`;
+  elements.pageSummary.textContent = `Showing ${page.start.toLocaleString()}–${page.end.toLocaleString()} of ${page.totalItems.toLocaleString()} issues ${scope} · 20 per page`;
+  elements.pageNumber.textContent = `Page ${page.currentPage.toLocaleString()} of ${page.totalPages.toLocaleString()}`;
+  elements.previousPage.disabled = page.currentPage <= 1;
+  elements.nextPage.disabled = page.currentPage >= page.totalPages;
+}
+
+export function renderResults(analysis, onSelectionChanged) {
+  const changedAnalysis = resultsView.analysis !== analysis;
+  resultsView.analysis = analysis;
+  resultsView.onSelectionChanged = onSelectionChanged;
+  if (changedAnalysis) {
+    resultsView.fileIndex = "all";
+    resultsView.page = 1;
+    populateFileFilter(analysis);
+  }
+  elements.progressCard.classList.add("hidden");
+  elements.results.classList.remove("hidden");
+  elements.completion.classList.add("hidden");
+  elements.issues.textContent = analysis.issues.length.toLocaleString();
+  elements.repairable.textContent = analysis.repairable.toLocaleString();
+  elements.review.textContent = analysis.reviewOnly.toLocaleString();
+  elements.schema.textContent = analysis.schema;
+  const counts = analysis.counts || {};
+  elements.signatureSummary.textContent =
+    `Files checked: ${analysis.successfulFiles.toLocaleString()} of ${analysis.filesScanned.toLocaleString()} · ` +
+    `Body / SweptSolid: ${(counts.bodySweptSolid || 0).toLocaleString()} · ` +
+    `Body / Tessellation: ${(counts.bodyTessellation || 0).toLocaleString()} · ` +
+    `FootPrint / Curve2D: ${(counts.footprintCurve2D || 0).toLocaleString()}`;
+  renderResultsPage();
   updateRepairButton(analysis);
 }
 
 export function updateRepairButton(analysis) {
   const count = analysis.issues.filter(issue => issue.selected && issue.repairable).length;
   elements.repair.disabled = count === 0;
-  elements.repair.textContent = count
-    ? `Repair ${count.toLocaleString()} selected issue${count === 1 ? "" : "s"}`
-    : "No safe repairs selected";
+  elements.repair.textContent = count ? "Repair all files" : "No safe repairs selected";
   elements.selectAll.checked = count > 0 && count === analysis.repairable;
   elements.selectAll.disabled = analysis.repairable === 0;
 }
 
-export function showCompletion(result, outputs, onDownload) {
+export function showCompletion(result, outputCount, onDownload) {
   elements.progressCard.classList.add("hidden");
   elements.results.classList.add("hidden");
   elements.completion.classList.remove("hidden");
@@ -164,16 +212,14 @@ export function showCompletion(result, outputs, onDownload) {
     `${result.successfulChanges.toLocaleString()} of ${result.expectedChanges.toLocaleString()} planned context repair${result.expectedChanges === 1 ? "" : "s"} verified; ` +
     `${result.unexpectedChanges.toLocaleString()} unexpected changes; ` +
     `${result.remainingSupportedMissing.toLocaleString()} supported missing context${result.remainingSupportedMissing === 1 ? "" : "s"} remain. ` +
-    `${outputs.length.toLocaleString()} repaired IFC file${outputs.length === 1 ? "" : "s"} ready to download.`;
+    `${outputCount.toLocaleString()} repaired IFC file${outputCount === 1 ? "" : "s"} packaged in one ZIP.`;
   elements.downloadList.replaceChildren();
-  for (const output of outputs) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "button primary";
-    button.textContent = `Download ${output.name}`;
-    button.addEventListener("click", () => onDownload(output));
-    elements.downloadList.append(button);
-  }
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "button primary";
+  button.textContent = `Download all files (.zip)`;
+  button.addEventListener("click", onDownload);
+  elements.downloadList.append(button);
   setStep(3);
 }
 
@@ -186,6 +232,10 @@ export function showError(error) {
 }
 
 export function resetUi() {
+  resultsView.analysis = null;
+  resultsView.onSelectionChanged = null;
+  resultsView.fileIndex = "all";
+  resultsView.page = 1;
   elements.input.value = "";
   elements.selectCard.classList.remove("has-file");
   elements.fileSummary.classList.add("hidden");
@@ -197,4 +247,18 @@ export function resetUi() {
   elements.downloadList.replaceChildren();
   setStep(1);
 }
+
+elements.fileFilter.addEventListener("change", () => {
+  resultsView.fileIndex = elements.fileFilter.value;
+  resultsView.page = 1;
+  renderResultsPage();
+});
+elements.previousPage.addEventListener("click", () => {
+  resultsView.page -= 1;
+  renderResultsPage();
+});
+elements.nextPage.addEventListener("click", () => {
+  resultsView.page += 1;
+  renderResultsPage();
+});
 

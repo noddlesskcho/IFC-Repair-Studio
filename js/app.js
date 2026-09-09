@@ -1,14 +1,15 @@
-import {analyzeIfc} from "./ifc-analyzer.js?v=1.0.0-r7";
-import {combineAnalyses, selectedIssuesForFile} from "./ifc-batch.js?v=1.0.0-r7";
-import {downloadBlob, repairedFileName} from "./ifc-exporter.js?v=1.0.0-r7";
-import {applyRepairs, verifyRepairedModel, verifyRepairs} from "./ifc-fixer.js?v=1.0.0-r7";
-import {loadIfc} from "./ifc-loader.js?v=1.0.0-r7";
+import {analyzeIfc} from "./ifc-analyzer.js?v=1.0.0-r8";
+import {combineAnalyses, selectedIssuesForFile} from "./ifc-batch.js?v=1.0.0-r8";
+import {downloadBlob, repairedFileName} from "./ifc-exporter.js?v=1.0.0-r8";
+import {applyRepairs, verifyRepairedModel, verifyRepairs} from "./ifc-fixer.js?v=1.0.0-r8";
+import {loadIfc} from "./ifc-loader.js?v=1.0.0-r8";
+import {createRepairedZip, repairedArchiveName} from "./zip-exporter.js?v=1.0.0-r8";
 import {
   elements, renderResults, resetUi, setStep, showCompletion, showError, showFiles,
   updateProgress, updateRepairButton,
-} from "./ui.js?v=1.0.0-r7";
+} from "./ui.js?v=1.0.0-r8";
 
-const state = {entries: [], analysis: null, outputs: [], busy: false};
+const state = {entries: [], analysis: null, outputs: [], archive: null, busy: false};
 
 function setBusy(value) {
   state.busy = value;
@@ -32,6 +33,7 @@ async function processFiles(fileList) {
   state.entries = [];
   state.analysis = null;
   state.outputs = [];
+  state.archive = null;
   showFiles(files);
   setStep(2);
   setBusy(true);
@@ -61,6 +63,7 @@ async function repairSelected() {
   if (state.busy || !state.analysis) return;
   setBusy(true);
   state.outputs = [];
+  state.archive = null;
   const summary = {
     expectedChanges: 0,
     successfulChanges: 0,
@@ -92,9 +95,12 @@ async function repairSelected() {
       summary.remainingSupportedMissing += result.remainingSupportedMissing;
       state.outputs.push({blob: output, name: outputName, result});
     }
-    showCompletion(summary, state.outputs, output => downloadBlob(output.blob, output.name));
+    const outputCount = state.outputs.length;
+    state.archive = await createRepairedZip(state.outputs, updateProgress);
+    showCompletion(summary, outputCount, () => downloadBlob(state.archive, repairedArchiveName()));
   } catch (error) {
     state.outputs = [];
+    state.archive = null;
     showError(error);
   } finally {
     setBusy(false);
@@ -105,6 +111,7 @@ function restart() {
   state.entries = [];
   state.analysis = null;
   state.outputs = [];
+  state.archive = null;
   resetUi();
 }
 
@@ -142,4 +149,5 @@ for (const button of [elements.checkAnother, elements.restart, elements.errorRes
 
 window.addEventListener("beforeunload", () => {
   state.outputs = [];
+  state.archive = null;
 });

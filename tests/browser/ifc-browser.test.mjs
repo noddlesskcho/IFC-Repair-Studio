@@ -4,10 +4,11 @@ import test from "node:test";
 import {fileURLToPath} from "node:url";
 
 import {analyzeIfc} from "../../js/ifc-analyzer.js";
-import {combineAnalyses, selectedIssuesForFile} from "../../js/ifc-batch.js";
+import {combineAnalyses, paginateIssues, RESULTS_PAGE_SIZE, selectedIssuesForFile} from "../../js/ifc-batch.js";
 import {applyRepairs, verifyRepairedModel, verifyRepairs} from "../../js/ifc-fixer.js";
 import {loadIfc, splitStepArguments} from "../../js/ifc-loader.js";
 import {downloadBlob, repairedFileName} from "../../js/ifc-exporter.js";
+import {createRepairedZip, repairedArchiveName} from "../../js/zip-exporter.js";
 
 const fixturePath = fileURLToPath(new URL("./fixtures/direct-missing-context.ifc", import.meta.url));
 
@@ -250,7 +251,47 @@ test("batch analysis combines counts and identifies each source file", () => {
   assert.equal(combined.representationsScanned, 30);
   assert.equal(combined.counts.bodySweptSolid, 1);
   assert.equal(combined.counts.bodyTessellation, 1);
+  assert.deepEqual(combined.files.map(file => [file.fileName, file.issueCount]), [
+    ["architecture.ifc", 1], ["structure.ifc", 1], ["invalid.ifc", 0],
+  ]);
   assert.deepEqual(combined.issues.map(issue => issue.fileName), ["architecture.ifc", "structure.ifc"]);
+});
+
+test("issue pagination exposes exactly 20 rows and preserves the full issue count", () => {
+  const issues = Array.from({length: 25_425}, (_, id) => ({id, fileIndex: id < 25_000 ? 0 : 1}));
+  const first = paginateIssues(issues);
+  assert.equal(RESULTS_PAGE_SIZE, 20);
+  assert.equal(first.items.length, 20);
+  assert.equal(first.totalItems, 25_425);
+  assert.equal(first.totalPages, 1_272);
+  assert.deepEqual([first.start, first.end], [1, 20]);
+
+  const last = paginateIssues(issues, "all", 1_272);
+  assert.equal(last.items.length, 5);
+  assert.deepEqual([last.start, last.end], [25_421, 25_425]);
+
+  const secondFile = paginateIssues(issues, "1", 1);
+  assert.equal(secondFile.totalItems, 425);
+  assert.equal(secondFile.items.length, 20);
+});
+
+test("repaired files are packaged in one valid stored ZIP", async () => {
+  const zip = await createRepairedZip([
+    {name: "architecture_repaired.ifc", blob: new Blob(["ARCHITECTURE"])},
+    {name: "structure_repaired.ifc", blob: new Blob(["STRUCTURE"])},
+  ]);
+  const bytes = new Uint8Array(await zip.arrayBuffer());
+  const view = new DataView(bytes.buffer);
+  assert.equal(zip.type, "application/zip");
+  assert.equal(repairedArchiveName(), "IFC-SG_IfcShapeRepresentation_repaired_files.zip");
+  assert.equal(view.getUint32(0, true), 0x04034b50);
+  assert.equal(view.getUint32(bytes.length - 22, true), 0x06054b50);
+  assert.equal(view.getUint16(bytes.length - 12, true), 2);
+  const text = new TextDecoder().decode(bytes);
+  assert.match(text, /architecture_repaired\.ifc/);
+  assert.match(text, /structure_repaired\.ifc/);
+  assert.match(text, /ARCHITECTURE/);
+  assert.match(text, /STRUCTURE/);
 });
 
 test("batch repair selection remains isolated by source file", () => {

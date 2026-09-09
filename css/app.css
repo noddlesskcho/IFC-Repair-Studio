@@ -14,4 +14,13 @@
 .download-list{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;margin:18px 0}
 .download-list:empty{display:none}
 .file-error{color:var(--red);background:var(--redbg);font-weight:650}
+.results-controls{display:flex;align-items:center;gap:12px;margin-top:18px;padding:12px 14px;background:#f8fafc;border:1px solid var(--line);border-radius:10px}
+.results-controls label{font-size:13px;font-weight:700;white-space:nowrap}
+.results-controls select{max-width:430px;padding:9px 34px 9px 11px;border:1px solid #cbd2dc;border-radius:8px;background:#fff;color:var(--ink)}
+.results-controls .muted{margin-left:auto;font-size:13px;text-align:right}
+.table-wrap{max-height:none;overflow-x:auto;overflow-y:visible;margin-top:12px}
+.pagination{display:flex;align-items:center;justify-content:center;gap:14px;margin-top:14px}
+.pagination .button{padding:8px 13px;width:auto}
+.pagination span{font-size:13px;font-weight:700;color:#475467;min-width:110px;text-align:center}
+@media(max-width:800px){.results-controls{align-items:stretch;flex-direction:column}.results-controls select{max-width:none;width:100%}.results-controls .muted{margin-left:0;text-align:left}.pagination .button{width:auto}}
 

@@ -9,8 +9,9 @@ and returned as a downloadable `Blob`. It is not uploaded to this project or to
 another service.
 
 One or more IFC files can be selected or dropped together. Files are analyzed and
-repaired sequentially to keep peak browser memory practical, and each repaired IFC
-is offered as a separate download.
+repaired sequentially to keep peak browser memory practical. Results can be viewed
+for all files or one file at a time, with 20 issues per page. All repaired IFCs are
+packaged locally into one ZIP download.
 
 ## Run locally
 
@@ -107,7 +108,7 @@ recommended option for very large models and full semantic validation.
 - No analytics, telemetry, cookie, or external CDN is included.
 - Processing occurs locally in the active browser tab.
 - A file leaves the browser only when the user explicitly downloads the repaired
-  IFC or otherwise shares it.
+  IFC ZIP or otherwise shares it.
 
 > IFC+SG IfcShapeRepresentation Repair Tool performs targeted repairs for known IFC+SG export issues. It is not
 > a complete IFC validator or CORENET X compliance checker. A repaired IFC
