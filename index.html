@@ -8,7 +8,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>IFC+SG IfcShapeRepresentation Repair Tool</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23175cd3'/%3E%3Cpath d='M18 20h28v7H25v7h17v7H25v11h-7z' fill='white'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="./css/app.css?v=1.0.0-r8">
+  <link rel="stylesheet" href="./css/app.css?v=1.0.0-r9">
 </head>
 <body>
   <header class="site-header">
@@ -60,24 +60,30 @@
       <section class="card">
         <div class="section-heading">
           <div><h2>Supported repair results</h2><p id="signature-summary">All supported shape representations are checked, including ShapeAspect and layer-assigned representations.</p></div>
-          <label class="select-all"><input id="select-all" type="checkbox" checked> Select all safe repairs</label>
         </div>
-        <div class="results-controls">
-          <label for="file-filter">View results for</label>
-          <select id="file-filter" aria-label="Choose a file to view"></select>
-          <span id="page-summary" class="muted" aria-live="polite"></span>
+        <div id="all-repairable-message" class="compact-success hidden" aria-live="polite"></div>
+        <div id="review-details" class="hidden">
+          <div class="exception-heading">
+            <h3>Unable to repair automatically</h3>
+            <p>Only files and issues requiring manual review are listed below.</p>
+          </div>
+          <div class="results-controls">
+            <label for="file-filter">View exceptions for</label>
+            <select id="file-filter" aria-label="Choose a file to view"></select>
+            <span id="page-summary" class="muted" aria-live="polite"></span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Status</th><th>File</th><th>STEP ID</th><th>Identifier</th><th>Type</th><th>Current context</th><th>Proposed context</th><th>Context STEP ID</th><th>Referenced by</th><th>Reason</th></tr></thead>
+              <tbody id="results-body"></tbody>
+            </table>
+          </div>
+          <nav class="pagination" aria-label="Exception pages">
+            <button id="previous-page" class="button" type="button">Previous</button>
+            <span id="page-number">Page 1 of 1</span>
+            <button id="next-page" class="button" type="button">Next</button>
+          </nav>
         </div>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Apply</th><th>Status</th><th>File</th><th>STEP ID</th><th>Identifier</th><th>Type</th><th>Current context</th><th>Proposed context</th><th>Context STEP ID</th><th>Referenced by</th><th>Reason</th></tr></thead>
-            <tbody id="results-body"></tbody>
-          </table>
-        </div>
-        <nav class="pagination" aria-label="Issue pages">
-          <button id="previous-page" class="button" type="button">Previous</button>
-          <span id="page-number">Page 1 of 1</span>
-          <button id="next-page" class="button" type="button">Next</button>
-        </nav>
         <div class="actions">
           <button id="check-another" class="button" type="button">Check another IFC</button>
           <button id="repair-button" class="button primary" type="button">Repair all files</button>
@@ -94,6 +100,11 @@
         <li>The original IFC remains unchanged.</li>
         <li>No file was uploaded or transmitted by this application.</li>
       </ul>
+      <div id="download-progress-panel" class="download-progress-panel hidden" aria-live="polite">
+        <div class="progress-head"><strong id="download-status">Preparing ZIP...</strong><span id="download-percent">0%</span></div>
+        <progress id="download-progress" max="100" value="0"></progress>
+        <p id="download-detail" class="muted">Packaging the repaired IFC files locally in this browser.</p>
+      </div>
       <div id="download-list" class="download-list"></div>
       <div class="actions centered">
         <button id="restart-button" class="button" type="button">Check another IFC</button>
@@ -110,7 +121,7 @@
     <p><strong>Browser repair scope:</strong> IFC4 Body/SweptSolid, Body/Tessellation, and FootPrint/Curve2D missing-context repairs when exactly one compatible project-connected context is available.</p>
     <p>This tool is not a complete IFC validator or CORENET X compliance checker.</p>
   </footer>
-  <script type="module" src="./js/app.js?v=1.0.0-r8"></script>
+  <script type="module" src="./js/app.js?v=1.0.0-r9"></script>
 </body>
 </html>
 

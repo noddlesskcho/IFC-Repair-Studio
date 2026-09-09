@@ -23,4 +23,8 @@
 .pagination .button{padding:8px 13px;width:auto}
 .pagination span{font-size:13px;font-weight:700;color:#475467;min-width:110px;text-align:center}
 @media(max-width:800px){.results-controls{align-items:stretch;flex-direction:column}.results-controls select{max-width:none;width:100%}.results-controls .muted{margin-left:0;text-align:left}.pagination .button{width:auto}}
+.compact-success{margin-top:18px;padding:15px 17px;border:1px solid #abefc6;border-radius:10px;background:var(--greenbg);color:var(--green);font-weight:700}
+.exception-heading{margin-top:20px}.exception-heading h3{margin:0 0 4px;color:var(--amber)}.exception-heading p{margin:0;color:var(--muted)}
+.download-progress-panel{max-width:620px;margin:18px auto;padding:15px;text-align:left;border:1px solid #b2ccff;border-radius:10px;background:var(--blue2)}
+.download-progress-panel .muted{margin:8px 0 0}
 

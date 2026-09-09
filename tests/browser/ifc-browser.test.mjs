@@ -276,10 +276,11 @@ test("issue pagination exposes exactly 20 rows and preserves the full issue coun
 });
 
 test("repaired files are packaged in one valid stored ZIP", async () => {
+  const progress = [];
   const zip = await createRepairedZip([
     {name: "architecture_repaired.ifc", blob: new Blob(["ARCHITECTURE"])},
     {name: "structure_repaired.ifc", blob: new Blob(["STRUCTURE"])},
-  ]);
+  ], update => progress.push(update));
   const bytes = new Uint8Array(await zip.arrayBuffer());
   const view = new DataView(bytes.buffer);
   assert.equal(zip.type, "application/zip");
@@ -292,6 +293,9 @@ test("repaired files are packaged in one valid stored ZIP", async () => {
   assert.match(text, /structure_repaired\.ifc/);
   assert.match(text, /ARCHITECTURE/);
   assert.match(text, /STRUCTURE/);
+  assert.ok(progress.length >= 2);
+  assert.equal(progress.at(-1).current, progress.at(-1).total);
+  assert.match(progress.at(-1).stage, /Packaging structure_repaired\.ifc/);
 });
 
 test("batch repair selection remains isolated by source file", () => {

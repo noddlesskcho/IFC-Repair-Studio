@@ -9,9 +9,10 @@ and returned as a downloadable `Blob`. It is not uploaded to this project or to
 another service.
 
 One or more IFC files can be selected or dropped together. Files are analyzed and
-repaired sequentially to keep peak browser memory practical. Results can be viewed
-for all files or one file at a time, with 20 issues per page. All repaired IFCs are
-packaged locally into one ZIP download.
+repaired sequentially to keep peak browser memory practical. Repairable-item lists
+stay hidden; only exceptions that cannot be repaired automatically are shown, with
+file filtering and 20 exceptions per page. When requested, all repaired IFCs are
+packaged locally into one ZIP download with visible progress.
 
 ## Run locally
 

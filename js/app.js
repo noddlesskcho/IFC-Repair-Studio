@@ -1,13 +1,13 @@
-import {analyzeIfc} from "./ifc-analyzer.js?v=1.0.0-r8";
-import {combineAnalyses, selectedIssuesForFile} from "./ifc-batch.js?v=1.0.0-r8";
-import {downloadBlob, repairedFileName} from "./ifc-exporter.js?v=1.0.0-r8";
-import {applyRepairs, verifyRepairedModel, verifyRepairs} from "./ifc-fixer.js?v=1.0.0-r8";
-import {loadIfc} from "./ifc-loader.js?v=1.0.0-r8";
-import {createRepairedZip, repairedArchiveName} from "./zip-exporter.js?v=1.0.0-r8";
+import {analyzeIfc} from "./ifc-analyzer.js?v=1.0.0-r9";
+import {combineAnalyses, selectedIssuesForFile} from "./ifc-batch.js?v=1.0.0-r9";
+import {downloadBlob, repairedFileName} from "./ifc-exporter.js?v=1.0.0-r9";
+import {applyRepairs, verifyRepairedModel, verifyRepairs} from "./ifc-fixer.js?v=1.0.0-r9";
+import {loadIfc} from "./ifc-loader.js?v=1.0.0-r9";
+import {createRepairedZip, repairedArchiveName} from "./zip-exporter.js?v=1.0.0-r9";
 import {
   elements, renderResults, resetUi, setStep, showCompletion, showError, showFiles,
   updateProgress, updateRepairButton,
-} from "./ui.js?v=1.0.0-r8";
+} from "./ui.js?v=1.0.0-r9";
 
 const state = {entries: [], analysis: null, outputs: [], archive: null, busy: false};
 
@@ -50,7 +50,7 @@ async function processFiles(fileList) {
       }
     }
     state.analysis = combineAnalyses(state.entries);
-    renderResults(state.analysis, () => updateRepairButton(state.analysis));
+    renderResults(state.analysis);
   } catch (error) {
     showError(error);
   } finally {
@@ -96,8 +96,11 @@ async function repairSelected() {
       state.outputs.push({blob: output, name: outputName, result});
     }
     const outputCount = state.outputs.length;
-    state.archive = await createRepairedZip(state.outputs, updateProgress);
-    showCompletion(summary, outputCount, () => downloadBlob(state.archive, repairedArchiveName()));
+    showCompletion(summary, outputCount, async reportProgress => {
+      if (!state.archive) state.archive = await createRepairedZip(state.outputs, reportProgress);
+      else reportProgress({stage: "ZIP ready", current: state.archive.size, total: state.archive.size, unit: "bytes"});
+      downloadBlob(state.archive, repairedArchiveName());
+    });
   } catch (error) {
     state.outputs = [];
     state.archive = null;
@@ -138,10 +141,6 @@ for (const name of ["dragleave", "drop"]) {
   });
 }
 elements.drop.addEventListener("drop", event => processFiles(event.dataTransfer.files));
-elements.selectAll.addEventListener("change", () => {
-  for (const issue of state.analysis.issues) if (issue.repairable) issue.selected = elements.selectAll.checked;
-  renderResults(state.analysis, () => updateRepairButton(state.analysis));
-});
 elements.repair.addEventListener("click", repairSelected);
 for (const button of [elements.checkAnother, elements.restart, elements.errorRestart]) {
   button.addEventListener("click", restart);
