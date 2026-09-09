@@ -8,14 +8,14 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>IFC+SG IfcShapeRepresentation Repair Tool</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23175cd3'/%3E%3Cpath d='M18 20h28v7H25v7h17v7H25v11h-7z' fill='white'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="./css/app.css?v=1.0.0-r9">
+  <link rel="stylesheet" href="./css/app.css?v=1.0.0-r11">
 </head>
 <body>
   <header class="site-header">
     <div>
       <p class="eyebrow">REVIT 2025 / 2026 IFC+SG &middot; IFC4 GEOMETRY REFERENCE REPAIR &middot; CORENET X PRE-SUBMISSION</p>
       <h1>IFC+SG IfcShapeRepresentation Repair Tool</h1>
-      <p class="subtitle">Repairs missing <code>IfcShapeRepresentation</code> context references in IFC+SG files exported from Autodesk Revit 2025 and 2026. This IFC4 schema issue can cause model elements to be missing during CORENET X processing.</p>
+      <p class="subtitle">Repairs missing <code>IfcShapeRepresentation</code> context references in IFC+SG files exported from Autodesk Revit 2025 and 2026. This issue may cause the IFC schema check to fail in the CORENET X Submission Portal.</p>
     </div>
     <span class="privacy-badge"><span>Your IFC file is processed locally.</span><span>It is not uploaded or stored.</span></span>
   </header>
@@ -47,6 +47,9 @@
       <div class="progress-head"><strong id="progress-title">Reading IFC</strong><span id="progress-percent">0%</span></div>
       <progress id="progress" max="100" value="0"></progress>
       <p id="progress-detail" class="muted">Preparing local analysis...</p>
+      <div class="surf-bot" aria-hidden="true">
+        <svg viewBox="0 0 150 82" focusable="false"><path class="wave wave-back" d="M2 67c16-13 31-13 47 0s31 13 47 0 31-13 52 0"/><path class="wave wave-front" d="M2 75c16-11 31-11 47 0s31 11 47 0 31-11 52 0"/><g class="robot"><path class="board" d="M44 60c22 7 46 7 68 0-5 11-17 15-34 15S49 71 44 60Z"/><rect class="bot-body" x="63" y="35" width="30" height="24" rx="7"/><rect class="bot-head" x="59" y="11" width="38" height="28" rx="9"/><circle class="bot-eye" cx="70" cy="25" r="3"/><circle class="bot-eye" cx="86" cy="25" r="3"/><path class="bot-line" d="M70 33h16M63 45 50 54m43-9 13 9M70 59l-7 5m23-5 7 5"/><path class="antenna" d="M78 11V5m0 0 5-3"/></g></svg>
+      </div>
     </section>
 
     <section class="hidden" id="results-section">
@@ -59,16 +62,13 @@
 
       <section class="card">
         <div class="section-heading">
-          <div><h2>Supported repair results</h2><p id="signature-summary">All supported shape representations are checked, including ShapeAspect and layer-assigned representations.</p></div>
+          <div><h2>Repair Results</h2><p id="signature-summary">All supported shape representations are checked, including ShapeAspect and layer-assigned representations.</p><p id="repair-file-summary" class="repair-file-summary"></p></div>
         </div>
         <div id="all-repairable-message" class="compact-success hidden" aria-live="polite"></div>
-        <div id="review-details" class="hidden">
-          <div class="exception-heading">
-            <h3>Unable to repair automatically</h3>
-            <p>Only files and issues requiring manual review are listed below.</p>
-          </div>
+        <details id="review-details" class="result-details hidden">
+          <summary id="details-summary">View repair details</summary>
           <div class="results-controls">
-            <label for="file-filter">View exceptions for</label>
+            <label for="file-filter">View results for</label>
             <select id="file-filter" aria-label="Choose a file to view"></select>
             <span id="page-summary" class="muted" aria-live="polite"></span>
           </div>
@@ -78,12 +78,12 @@
               <tbody id="results-body"></tbody>
             </table>
           </div>
-          <nav class="pagination" aria-label="Exception pages">
+          <nav class="pagination" aria-label="Repair result pages">
             <button id="previous-page" class="button" type="button">Previous</button>
             <span id="page-number">Page 1 of 1</span>
             <button id="next-page" class="button" type="button">Next</button>
           </nav>
-        </div>
+        </details>
         <div class="actions">
           <button id="check-another" class="button" type="button">Check another IFC</button>
           <button id="repair-button" class="button primary" type="button">Repair all files</button>
@@ -95,6 +95,7 @@
       <p class="success-mark" aria-hidden="true">&#10003;</p>
       <h2>Repaired IFC ZIP ready</h2>
       <p id="completion-summary"></p>
+      <p id="completion-package-summary" class="package-summary"></p>
       <ul>
         <li>Only selected <code>IfcShapeRepresentation.ContextOfItems</code> values were changed.</li>
         <li>The original IFC remains unchanged.</li>
@@ -104,6 +105,9 @@
         <div class="progress-head"><strong id="download-status">Preparing ZIP...</strong><span id="download-percent">0%</span></div>
         <progress id="download-progress" max="100" value="0"></progress>
         <p id="download-detail" class="muted">Packaging the repaired IFC files locally in this browser.</p>
+        <div class="surf-bot" aria-hidden="true">
+          <svg viewBox="0 0 150 82" focusable="false"><path class="wave wave-back" d="M2 67c16-13 31-13 47 0s31 13 47 0 31-13 52 0"/><path class="wave wave-front" d="M2 75c16-11 31-11 47 0s31 11 47 0 31-11 52 0"/><g class="robot"><path class="board" d="M44 60c22 7 46 7 68 0-5 11-17 15-34 15S49 71 44 60Z"/><rect class="bot-body" x="63" y="35" width="30" height="24" rx="7"/><rect class="bot-head" x="59" y="11" width="38" height="28" rx="9"/><circle class="bot-eye" cx="70" cy="25" r="3"/><circle class="bot-eye" cx="86" cy="25" r="3"/><path class="bot-line" d="M70 33h16M63 45 50 54m43-9 13 9M70 59l-7 5m23-5 7 5"/><path class="antenna" d="M78 11V5m0 0 5-3"/></g></svg>
+        </div>
       </div>
       <div id="download-list" class="download-list"></div>
       <div class="actions centered">
@@ -121,7 +125,7 @@
     <p><strong>Browser repair scope:</strong> IFC4 Body/SweptSolid, Body/Tessellation, and FootPrint/Curve2D missing-context repairs when exactly one compatible project-connected context is available.</p>
     <p>This tool is not a complete IFC validator or CORENET X compliance checker.</p>
   </footer>
-  <script type="module" src="./js/app.js?v=1.0.0-r9"></script>
+  <script type="module" src="./js/app.js?v=1.0.0-r11"></script>
 </body>
 </html>
 

@@ -27,4 +27,31 @@
 .exception-heading{margin-top:20px}.exception-heading h3{margin:0 0 4px;color:var(--amber)}.exception-heading p{margin:0;color:var(--muted)}
 .download-progress-panel{max-width:620px;margin:18px auto;padding:15px;text-align:left;border:1px solid #b2ccff;border-radius:10px;background:var(--blue2)}
 .download-progress-panel .muted{margin:8px 0 0}
+.repair-file-summary{margin-top:8px!important;color:#344054!important;font-weight:700}
+.result-details{margin-top:16px;border:1px solid var(--line);border-radius:10px;background:#fff;overflow:hidden}
+.result-details>summary{padding:13px 15px;cursor:pointer;background:#f8fafc;color:var(--blue);font-weight:800;list-style-position:inside}
+.result-details[open]>summary{border-bottom:1px solid var(--line)}
+.result-details .results-controls{margin:14px 14px 0}
+.result-details .table-wrap{margin:12px 14px 0}
+.result-details .pagination{margin:14px}
+.table-wrap{max-height:370px;overflow:auto}
+.result-details table{min-width:1450px}
+.result-details tbody tr{height:64px}
+.result-details td{height:64px;max-width:300px;vertical-align:middle}
+.result-details .cell-text{display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;line-height:1.35}
+.package-summary{max-width:900px;margin:12px auto;color:#344054;font-weight:700}
+#progress-card{position:relative;min-height:158px;padding-right:190px;overflow:hidden}
+.download-progress-panel{position:relative;min-height:145px;padding-right:180px;overflow:hidden}
+.surf-bot{position:absolute;right:18px;bottom:4px;width:150px;height:82px;pointer-events:none}
+.surf-bot svg{display:block;width:100%;height:100%;overflow:visible;shape-rendering:geometricPrecision}
+.wave{fill:none;stroke-linecap:round;stroke-width:4;stroke-dasharray:12 8;animation:wave-slide 1.1s linear infinite}
+.wave-back{stroke:#84caff;opacity:.75}.wave-front{stroke:#1570ef}
+.robot{transform-origin:78px 58px;animation:robot-surf .9s ease-in-out infinite alternate}
+.board{fill:#fdb022;stroke:#142033;stroke-width:3}
+.bot-body,.bot-head{fill:#fff;stroke:#142033;stroke-width:3}
+.bot-eye{fill:#175cd3}.bot-line,.antenna{fill:none;stroke:#142033;stroke-width:3;stroke-linecap:round}
+@keyframes robot-surf{from{transform:translateY(1px) rotate(-2deg)}to{transform:translateY(-5px) rotate(3deg)}}
+@keyframes wave-slide{to{stroke-dashoffset:-20}}
+@media(max-width:650px){#progress-card,.download-progress-panel{padding-right:22px;padding-bottom:100px}.surf-bot{right:8px;width:130px}}
+@media(prefers-reduced-motion:reduce){.wave,.robot{animation:none}}
 

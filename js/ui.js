@@ -1,4 +1,4 @@
-import {paginateIssues, RESULTS_PAGE_SIZE} from "./ifc-batch.js?v=1.0.0-r9";
+import {paginateIssues, RESULTS_PAGE_SIZE} from "./ifc-batch.js?v=1.0.0-r11";
 
 const byId = id => document.getElementById(id);
 
@@ -24,8 +24,10 @@ export const elements = {
   review: byId("review-count"),
   schema: byId("schema-value"),
   signatureSummary: byId("signature-summary"),
+  repairFileSummary: byId("repair-file-summary"),
   allRepairableMessage: byId("all-repairable-message"),
   reviewDetails: byId("review-details"),
+  detailsSummary: byId("details-summary"),
   fileFilter: byId("file-filter"),
   pageSummary: byId("page-summary"),
   pageNumber: byId("page-number"),
@@ -35,6 +37,7 @@ export const elements = {
   checkAnother: byId("check-another"),
   completion: byId("completion-card"),
   completionSummary: byId("completion-summary"),
+  completionPackageSummary: byId("completion-package-summary"),
   downloadList: byId("download-list"),
   downloadProgressPanel: byId("download-progress-panel"),
   downloadProgress: byId("download-progress"),
@@ -90,27 +93,28 @@ export function updateProgress({stage, current = 0, total = 0, unit = "items"}) 
 
 function cell(row, value, className = "") {
   const td = document.createElement("td");
-  td.textContent = value ?? "-";
+  const content = document.createElement("span");
+  content.className = "cell-text";
+  content.textContent = value ?? "-";
+  content.title = value ?? "-";
+  td.append(content);
   if (className) td.className = className;
   row.append(td);
   return td;
 }
 
 function populateFileFilter(analysis) {
-  const exceptionFiles = analysis.files.filter(file =>
-    analysis.issues.some(issue => issue.fileIndex === file.fileIndex && !issue.repairable) || file.error);
   elements.fileFilter.replaceChildren();
   const all = document.createElement("option");
   all.value = "all";
-  all.textContent = `All files with exceptions (${exceptionFiles.length.toLocaleString()})`;
+  all.textContent = `All files (${analysis.files.length.toLocaleString()})`;
   elements.fileFilter.append(all);
-  for (const file of exceptionFiles) {
-    const issueCount = analysis.issues.filter(issue => issue.fileIndex === file.fileIndex && !issue.repairable).length;
+  for (const file of analysis.files) {
     const option = document.createElement("option");
     option.value = String(file.fileIndex);
     option.textContent = file.error
       ? `${file.fileName} (file could not be checked)`
-      : `${file.fileName} (${issueCount.toLocaleString()} issue${issueCount === 1 ? "" : "s"})`;
+      : `${file.fileName} (${file.issueCount.toLocaleString()} issue${file.issueCount === 1 ? "" : "s"})`;
     elements.fileFilter.append(option);
   }
   elements.fileFilter.value = resultsView.fileIndex;
@@ -119,8 +123,7 @@ function populateFileFilter(analysis) {
 function renderResultsPage() {
   const analysis = resultsView.analysis;
   if (!analysis) return;
-  const exceptions = analysis.issues.filter(issue => !issue.repairable);
-  const page = paginateIssues(exceptions, resultsView.fileIndex, resultsView.page, RESULTS_PAGE_SIZE);
+  const page = paginateIssues(analysis.issues, resultsView.fileIndex, resultsView.page, RESULTS_PAGE_SIZE);
   resultsView.page = page.currentPage;
   elements.body.replaceChildren();
 
@@ -166,7 +169,7 @@ function renderResultsPage() {
   const errorSummary = visibleErrors.length
     ? ` · ${visibleErrors.length.toLocaleString()} file${visibleErrors.length === 1 ? "" : "s"} could not be checked`
     : "";
-  elements.pageSummary.textContent = `Showing ${page.start.toLocaleString()}–${page.end.toLocaleString()} of ${page.totalItems.toLocaleString()} issues requiring review ${scope} · 20 per page${errorSummary}`;
+  elements.pageSummary.textContent = `Showing ${page.start.toLocaleString()}–${page.end.toLocaleString()} of ${page.totalItems.toLocaleString()} issues ${scope} · 20 per page${errorSummary}`;
   elements.pageNumber.textContent = `Page ${page.currentPage.toLocaleString()} of ${page.totalPages.toLocaleString()}`;
   elements.previousPage.disabled = page.currentPage <= 1;
   elements.nextPage.disabled = page.currentPage >= page.totalPages;
@@ -193,13 +196,27 @@ export function renderResults(analysis) {
     `Body / SweptSolid: ${(counts.bodySweptSolid || 0).toLocaleString()} · ` +
     `Body / Tessellation: ${(counts.bodyTessellation || 0).toLocaleString()} · ` +
     `FootPrint / Curve2D: ${(counts.footprintCurve2D || 0).toLocaleString()}`;
-  const hasExceptions = analysis.reviewOnly > 0 || analysis.fileErrors.length > 0;
-  elements.reviewDetails.classList.toggle("hidden", !hasExceptions);
-  elements.allRepairableMessage.classList.toggle("hidden", hasExceptions);
+  const repairFileIndexes = new Set(analysis.issues.filter(issue => issue.repairable).map(issue => issue.fileIndex));
+  const cleanFiles = analysis.files.filter(file => !file.error && file.issueCount === 0).length;
+  const manualOnlyFiles = analysis.files.filter(file => !file.error && file.issueCount > 0 &&
+    !repairFileIndexes.has(file.fileIndex)).length;
+  const fileClauses = [`${repairFileIndexes.size.toLocaleString()} of ${analysis.successfulFiles.toLocaleString()} checked file${analysis.successfulFiles === 1 ? "" : "s"} will be repaired automatically`];
+  if (cleanFiles) fileClauses.push(`${cleanFiles.toLocaleString()} need no repair`);
+  if (manualOnlyFiles) fileClauses.push(`${manualOnlyFiles.toLocaleString()} require manual review only`);
+  if (analysis.fileErrors.length) fileClauses.push(`${analysis.fileErrors.length.toLocaleString()} could not be checked`);
+  elements.repairFileSummary.textContent = `${fileClauses.join(" · ")}.`;
+
+  const hasDetails = analysis.issues.length > 0 || analysis.fileErrors.length > 0;
+  elements.reviewDetails.classList.toggle("hidden", !hasDetails);
+  if (changedAnalysis) elements.reviewDetails.open = false;
+  elements.detailsSummary.textContent = `View repair details (${analysis.issues.length.toLocaleString()} issue${analysis.issues.length === 1 ? "" : "s"})`;
+  elements.allRepairableMessage.classList.remove("hidden");
   elements.allRepairableMessage.textContent = analysis.repairable
-    ? `All ${analysis.repairable.toLocaleString()} supported issue${analysis.repairable === 1 ? " is" : "s are"} ready for automatic repair. The detailed repairable-item list is hidden.`
-    : "No supported missing contexts were detected. There is nothing to repair.";
-  if (hasExceptions) renderResultsPage();
+    ? `${analysis.repairable.toLocaleString()} supported issue${analysis.repairable === 1 ? " is" : "s are"} ready for automatic repair${analysis.reviewOnly ? `; ${analysis.reviewOnly.toLocaleString()} require manual review` : ""}.`
+    : analysis.reviewOnly
+      ? `${analysis.reviewOnly.toLocaleString()} supported issue${analysis.reviewOnly === 1 ? " requires" : "s require"} manual review; none can be repaired automatically.`
+      : "No supported missing contexts were detected. There is nothing to repair.";
+  if (hasDetails) renderResultsPage();
   updateRepairButton(analysis);
 }
 
@@ -220,7 +237,7 @@ function updateDownloadProgress({stage, current = 0, total = 0, unit = "bytes"})
     : "Packaging the repaired IFC files locally in this browser.";
 }
 
-export function showCompletion(result, outputCount, onDownload) {
+export function showCompletion(result, packageInfo, onDownload) {
   elements.progressCard.classList.add("hidden");
   elements.results.classList.add("hidden");
   elements.completion.classList.remove("hidden");
@@ -228,7 +245,13 @@ export function showCompletion(result, outputCount, onDownload) {
     `${result.successfulChanges.toLocaleString()} of ${result.expectedChanges.toLocaleString()} planned context repair${result.expectedChanges === 1 ? "" : "s"} verified; ` +
     `${result.unexpectedChanges.toLocaleString()} unexpected changes; ` +
     `${result.remainingSupportedMissing.toLocaleString()} supported missing context${result.remainingSupportedMissing === 1 ? "" : "s"} remain. ` +
-    `${outputCount.toLocaleString()} repaired IFC file${outputCount === 1 ? " is" : "s are"} ready to package in one ZIP.`;
+    `${packageInfo.outputCount.toLocaleString()} repaired IFC file${packageInfo.outputCount === 1 ? " is" : "s are"} ready to package in one ZIP.`;
+  const packageClauses = [`${packageInfo.outputCount.toLocaleString()} file${packageInfo.outputCount === 1 ? "" : "s"} with verified repairs will be included`];
+  if (packageInfo.cleanFiles) packageClauses.push(`${packageInfo.cleanFiles.toLocaleString()} file${packageInfo.cleanFiles === 1 ? "" : "s"} needed no repair and will not be included`);
+  if (packageInfo.manualOnlyFiles) packageClauses.push(`${packageInfo.manualOnlyFiles.toLocaleString()} manual-review file${packageInfo.manualOnlyFiles === 1 ? "" : "s"} will not be included`);
+  if (packageInfo.fileErrors) packageClauses.push(`${packageInfo.fileErrors.toLocaleString()} unreadable file${packageInfo.fileErrors === 1 ? "" : "s"} will not be included`);
+  elements.completionPackageSummary.textContent = `${packageClauses.join(" · ")}.`;
+  elements.selectCard.classList.add("hidden");
   elements.downloadList.replaceChildren();
   elements.downloadProgressPanel.classList.add("hidden");
   const button = document.createElement("button");
@@ -272,6 +295,7 @@ export function resetUi() {
   resultsView.fileIndex = "all";
   resultsView.page = 1;
   elements.input.value = "";
+  elements.selectCard.classList.remove("hidden");
   elements.selectCard.classList.remove("has-file");
   elements.fileSummary.classList.add("hidden");
   elements.progressCard.classList.add("hidden");

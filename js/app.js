@@ -1,13 +1,13 @@
-import {analyzeIfc} from "./ifc-analyzer.js?v=1.0.0-r9";
-import {combineAnalyses, selectedIssuesForFile} from "./ifc-batch.js?v=1.0.0-r9";
-import {downloadBlob, repairedFileName} from "./ifc-exporter.js?v=1.0.0-r9";
-import {applyRepairs, verifyRepairedModel, verifyRepairs} from "./ifc-fixer.js?v=1.0.0-r9";
-import {loadIfc} from "./ifc-loader.js?v=1.0.0-r9";
-import {createRepairedZip, repairedArchiveName} from "./zip-exporter.js?v=1.0.0-r9";
+import {analyzeIfc} from "./ifc-analyzer.js?v=1.0.0-r11";
+import {combineAnalyses, selectedIssuesForFile} from "./ifc-batch.js?v=1.0.0-r11";
+import {downloadBlob, repairedFileName} from "./ifc-exporter.js?v=1.0.0-r11";
+import {applyRepairs, verifyRepairedModel, verifyRepairs} from "./ifc-fixer.js?v=1.0.0-r11";
+import {loadIfc} from "./ifc-loader.js?v=1.0.0-r11";
+import {createRepairedZip, repairedArchiveName} from "./zip-exporter.js?v=1.0.0-r11";
 import {
   elements, renderResults, resetUi, setStep, showCompletion, showError, showFiles,
   updateProgress, updateRepairButton,
-} from "./ui.js?v=1.0.0-r9";
+} from "./ui.js?v=1.0.0-r11";
 
 const state = {entries: [], analysis: null, outputs: [], archive: null, busy: false};
 
@@ -62,6 +62,9 @@ async function processFiles(fileList) {
 async function repairSelected() {
   if (state.busy || !state.analysis) return;
   setBusy(true);
+  const selectedCount = state.analysis.issues.filter(issue => issue.selected && issue.repairable).length;
+  updateProgress({stage: "Preparing automatic repairs", current: 0, total: selectedCount});
+  window.scrollTo({top: 0, behavior: "smooth"});
   state.outputs = [];
   state.archive = null;
   const summary = {
@@ -96,7 +99,15 @@ async function repairSelected() {
       state.outputs.push({blob: output, name: outputName, result});
     }
     const outputCount = state.outputs.length;
-    showCompletion(summary, outputCount, async reportProgress => {
+    const cleanFiles = state.entries.filter(entry => !entry.error && entry.analysis.issues.length === 0).length;
+    const manualOnlyFiles = state.entries.filter(entry => !entry.error && entry.analysis.issues.length > 0 &&
+      !entry.analysis.issues.some(issue => issue.repairable)).length;
+    showCompletion(summary, {
+      outputCount,
+      cleanFiles,
+      manualOnlyFiles,
+      fileErrors: state.analysis.fileErrors.length,
+    }, async reportProgress => {
       if (!state.archive) state.archive = await createRepairedZip(state.outputs, reportProgress);
       else reportProgress({stage: "ZIP ready", current: state.archive.size, total: state.archive.size, unit: "bytes"});
       downloadBlob(state.archive, repairedArchiveName());
