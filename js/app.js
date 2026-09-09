@@ -7,7 +7,7 @@ import {createRepairedZip, repairedArchiveName} from "./zip-exporter.js?v=1.0.0-
 import {
   elements, renderResults, resetUi, setStep, showCompletion, showError, showFiles,
   updateProgress, updateRepairButton,
-} from "./ui.js?v=1.0.0-r11";
+} from "./ui.js?v=1.0.0-r15";
 
 const state = {entries: [], analysis: null, outputs: [], archive: null, busy: false};
 
@@ -108,9 +108,10 @@ async function repairSelected() {
       manualOnlyFiles,
       fileErrors: state.analysis.fileErrors.length,
     }, async reportProgress => {
-      if (!state.archive) state.archive = await createRepairedZip(state.outputs, reportProgress);
-      else reportProgress({stage: "ZIP ready", current: state.archive.size, total: state.archive.size, unit: "bytes"});
+      state.archive = null;
+      state.archive = await createRepairedZip(state.outputs, reportProgress);
       downloadBlob(state.archive, repairedArchiveName());
+      return {bytes: state.archive.size};
     });
   } catch (error) {
     state.outputs = [];

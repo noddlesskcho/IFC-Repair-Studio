@@ -226,15 +226,29 @@ export function updateRepairButton(analysis) {
   elements.repair.textContent = count ? "Repair all files" : "No safe repairs selected";
 }
 
-function updateDownloadProgress({stage, current = 0, total = 0, unit = "bytes"}) {
+function updateDownloadProgress({stage, current = 0, total = 0, unit = "bytes", percent: suppliedPercent, detail}) {
   elements.downloadProgressPanel.classList.remove("hidden");
-  const percent = total ? Math.min(100, Math.round(current * 100 / total)) : 0;
+  const percent = suppliedPercent ?? (total ? Math.min(100, Math.round(current * 100 / total)) : 0);
   elements.downloadProgress.value = percent;
   elements.downloadPercent.textContent = `${percent}%`;
   elements.downloadStatus.textContent = stage;
-  elements.downloadDetail.textContent = total && unit === "bytes"
+  elements.downloadDetail.textContent = detail ?? (total && unit === "bytes"
     ? `${formatBytes(current)} packaged of ${formatBytes(total)}`
-    : "Packaging the repaired IFC files locally in this browser.";
+    : "Packaging the repaired IFC files locally in this browser.");
+}
+
+async function animateDownloadHandoff(bytes = 0) {
+  const megabytes = bytes / (1024 * 1024);
+  const duration = Math.min(10_000, Math.max(3_000, Math.round(megabytes / 80 * 1_000)));
+  const interval = duration / 4;
+  for (let percent = 96; percent <= 99; percent += 1) {
+    await new Promise(resolve => setTimeout(resolve, interval));
+    updateDownloadProgress({
+      stage: "Preparing browser download...",
+      percent,
+      detail: "The ZIP is ready. Your browser is preparing the download or Save dialog.",
+    });
+  }
 }
 
 export function showCompletion(result, packageInfo, onDownload) {
@@ -261,10 +275,25 @@ export function showCompletion(result, packageInfo, onDownload) {
   button.addEventListener("click", async () => {
     button.disabled = true;
     button.textContent = "Preparing ZIP...";
-    updateDownloadProgress({stage: "Preparing ZIP..."});
+    updateDownloadProgress({
+      stage: "Starting ZIP package...",
+      percent: 0,
+      detail: "Packaging the repaired IFC files locally in this browser.",
+    });
     try {
       await new Promise(resolve => requestAnimationFrame(() => resolve()));
-      await onDownload(updateDownloadProgress);
+      const downloadResult = await onDownload(progress => {
+        const packagingPercent = progress.total
+          ? Math.min(95, Math.round(progress.current * 95 / progress.total))
+          : 0;
+        updateDownloadProgress({...progress, percent: packagingPercent});
+      });
+      updateDownloadProgress({
+        stage: "Preparing browser download...",
+        percent: 95,
+        detail: "The ZIP is ready. Your browser is preparing the download or Save dialog.",
+      });
+      await animateDownloadHandoff(downloadResult?.bytes);
       elements.downloadProgress.value = 100;
       elements.downloadPercent.textContent = "100%";
       elements.downloadStatus.textContent = "Download started";
