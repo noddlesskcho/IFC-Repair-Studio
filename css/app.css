@@ -40,9 +40,9 @@
 .result-details td{height:64px;max-width:300px;vertical-align:middle}
 .result-details .cell-text{display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;line-height:1.35}
 .package-summary{max-width:900px;margin:12px auto;color:#344054;font-weight:700}
-#progress-card{position:relative;min-height:125px;padding-right:110px;overflow:hidden}
-.download-progress-panel{position:relative;min-height:112px;padding-right:105px;overflow:hidden}
-.surf-bot{position:absolute;right:12px;bottom:5px;width:78px;height:44px;pointer-events:none;animation:surf-travel 1.15s cubic-bezier(.45,0,.55,1) infinite alternate}
+#progress-card{position:relative;min-height:125px;padding-right:22px;overflow:hidden}
+.download-progress-panel{position:relative;min-height:112px;padding-right:15px;overflow:hidden}
+.surf-bot{position:absolute;right:10px;bottom:5px;width:39px;height:22px;pointer-events:none;animation:surf-travel 1.15s cubic-bezier(.45,0,.55,1) infinite alternate}
 .surf-bot svg{display:block;width:100%;height:100%;overflow:visible;shape-rendering:geometricPrecision}
 .wave{fill:none;stroke-linecap:round;stroke-width:4;stroke-dasharray:12 8;animation:wave-slide .42s linear infinite}
 .wave-back{stroke:#98a2b3;opacity:.65}.wave-front{stroke:#344054}
@@ -50,9 +50,9 @@
 .board{fill:#667085;stroke:#101828;stroke-width:3}
 .bot-body,.bot-head{fill:#fff;stroke:#101828;stroke-width:3}
 .bot-eye{fill:#101828}.bot-line,.antenna{fill:none;stroke:#101828;stroke-width:3;stroke-linecap:round}
-@keyframes surf-travel{from{transform:translateX(-48px) rotate(-3deg)}to{transform:translateX(5px) rotate(3deg)}}
+@keyframes surf-travel{from{transform:translateX(-24px) rotate(-3deg)}to{transform:translateX(3px) rotate(3deg)}}
 @keyframes robot-flip{0%,12%{transform:translateY(0) rotate(0)}45%{transform:translateY(-34px) rotate(-180deg)}78%{transform:translateY(-10px) rotate(-360deg)}88%,100%{transform:translateY(0) rotate(-360deg)}}
 @keyframes wave-slide{to{stroke-dashoffset:-20}}
-@media(max-width:650px){#progress-card,.download-progress-panel{padding-right:85px}.surf-bot{right:7px;width:70px}}
+@media(max-width:650px){#progress-card{padding-right:22px}.download-progress-panel{padding-right:15px}.surf-bot{right:7px;width:39px}}
 @media(prefers-reduced-motion:reduce){.surf-bot,.wave,.robot{animation:none}}
 
