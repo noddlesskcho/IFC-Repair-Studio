@@ -1,4 +1,5 @@
-import {refs, stepString} from "./ifc-loader.js?v=1.0.0-r6";
+import {refs, stepString} from "./ifc-loader.js?v=1.1.0";
+import {analyzeEmptyShells} from "./ifc-empty-shells.js?v=1.1.0";
 
 const SUPPORTED = new Set(["body|sweptsolid", "body|tessellation", "footprint|curve2d"]);
 const REFERENCE_LABELS = new Map([
@@ -12,13 +13,29 @@ const CLASS_NAMES = new Map([
   ["IFCSLAB", "IfcSlab"], ["IFCWALL", "IfcWall"],
   ["IFCOPENINGELEMENT", "IfcOpeningElement"], ["IFCCOVERING", "IfcCovering"],
   ["IFCRAILING", "IfcRailing"], ["IFCDOOR", "IfcDoor"], ["IFCWINDOW", "IfcWindow"],
+  ["IFCSHADINGDEVICE", "IfcShadingDevice"], ["IFCCURTAINWALL", "IfcCurtainWall"], ["IFCPLATE", "IfcPlate"],
+  ["IFCMEMBER", "IfcMember"], ["IFCBEAM", "IfcBeam"], ["IFCCOLUMN", "IfcColumn"], ["IFCROOF", "IfcRoof"],
+  ["IFCSTAIR", "IfcStair"], ["IFCSTAIRFLIGHT", "IfcStairFlight"], ["IFCRAMP", "IfcRamp"], ["IFCFOOTING", "IfcFooting"],
+  ["IFCPILE", "IfcPile"], ["IFCBUILDINGELEMENTPROXY", "IfcBuildingElementProxy"], ["IFCFURNITURE", "IfcFurniture"],
+  ["IFCFURNISHINGELEMENT", "IfcFurnishingElement"], ["IFCSANITARYTERMINAL", "IfcSanitaryTerminal"], ["IFCSPACE", "IfcSpace"],
+  ["IFCFLOWTERMINAL", "IfcFlowTerminal"], ["IFCFLOWSEGMENT", "IfcFlowSegment"], ["IFCFLOWFITTING", "IfcFlowFitting"],
+  ["IFCVALVE", "IfcValve"], ["IFCPIPESEGMENT", "IfcPipeSegment"], ["IFCPIPEFITTING", "IfcPipeFitting"],
+  ["IFCDUCTSEGMENT", "IfcDuctSegment"], ["IFCDUCTFITTING", "IfcDuctFitting"], ["IFCLIGHTFIXTURE", "IfcLightFixture"],
+  ["IFCGEOGRAPHICELEMENT", "IfcGeographicElement"], ["IFCCIVILELEMENT", "IfcCivilElement"], ["IFCELEMENTASSEMBLY", "IfcElementAssembly"],
 ]);
 
 const normalized = value => String(value || "").toLowerCase();
 const enumValue = value => String(value || "").replace(/^\.|\.$/g, "").toUpperCase();
 const oneRef = value => refs(value)[0] ?? null;
 const signatureKey = record => `${normalized(stepString(record.args[1]))}|${normalized(stepString(record.args[2]))}`;
-const displayClass = type => CLASS_NAMES.get(type) || (type?.startsWith("IFC") ? `Ifc${type.slice(3).toLowerCase()}` : "Unknown");
+// Type objects reuse the occurrence name: IFCPLATETYPE -> IfcPlateType, IFCDOORSTYLE -> IfcDoorStyle.
+const displayClass = type => {
+  const known = CLASS_NAMES.get(type);
+  if (known) return known;
+  const suffix = type?.match(/^(.+?)(TYPE|STYLE)$/);
+  if (suffix && CLASS_NAMES.has(suffix[1])) return CLASS_NAMES.get(suffix[1]) + (suffix[2] === "TYPE" ? "Type" : "Style");
+  return type?.startsWith("IFC") ? `Ifc${type.slice(3).toLowerCase()}` : "Unknown";
+};
 
 function buildContextIndex(model) {
   const projectRoots = new Set();
@@ -108,13 +125,32 @@ function buildProductIndex(model) {
       type: record.type,
       globalId: stepString(record.args[0]),
       name: stepString(record.args[2]),
+      objectType: stepString(record.args[4]),
+      tag: stepString(record.args[7]),
     });
   }
   return byDefinition;
 }
 
-function productForRepresentation(referenceSources, model, productsByDefinition) {
+function buildTypeIndex(model) {
+  const byMap = new Map();
+  for (const type of model.typeCandidates || []) for (const mapId of type.mapIds) if (!byMap.has(mapId)) byMap.set(mapId, {...type, isType: true});
+  return byMap;
+}
+
+// Revit writes its element ID as the IFC Tag, and also at the end of the name ("Family:Type:985751").
+function revitId(product) {
+  if (!product) return null;
+  if (/^\d+$/.test(product.tag || "")) return product.tag;
+  return product.name?.match(/:(\d+)$/)?.[1] || null;
+}
+
+function productForRepresentation(referenceSources, model, productsByDefinition, typesByMap = model.typesByMap) {
   for (const source of referenceSources) {
+    if (source.type === "IFCREPRESENTATIONMAP") {
+      const type = typesByMap?.get(source.id);
+      if (type) return type;
+    }
     if (source.type === "IFCPRODUCTDEFINITIONSHAPE") {
       const product = productsByDefinition.get(source.id)?.[0];
       if (product) return product;
@@ -122,7 +158,7 @@ function productForRepresentation(referenceSources, model, productsByDefinition)
     if (source.type === "IFCSHAPEASPECT") {
       const aspect = model.detailed.get(source.id);
       const definitionId = oneRef(aspect?.args[4]);
-      const product = productsByDefinition.get(definitionId)?.[0];
+      const product = productsByDefinition.get(definitionId)?.[0] || typesByMap?.get(definitionId);
       if (product) return product;
     }
   }
@@ -130,11 +166,12 @@ function productForRepresentation(referenceSources, model, productsByDefinition)
 }
 
 function summaryCounts(issues) {
-  const bySignature = {bodySweptSolid: 0, bodyTessellation: 0, footprintCurve2D: 0};
+  const bySignature = {bodySweptSolid: 0, bodyTessellation: 0, footprintCurve2D: 0, emptyClosedShell: 0};
   for (const issue of issues) {
     if (issue.signature === "body|sweptsolid") bySignature.bodySweptSolid += 1;
     else if (issue.signature === "body|tessellation") bySignature.bodyTessellation += 1;
     else if (issue.signature === "footprint|curve2d") bySignature.footprintCurve2D += 1;
+    else if (issue.signature === "empty-closed-shell") bySignature.emptyClosedShell += 1;
   }
   return bySignature;
 }
@@ -150,6 +187,7 @@ export async function analyzeIfc(model, onProgress = () => {}) {
   const contexts = buildContextIndex(model);
   const referenceIndex = buildReferenceIndex(model);
   const productsByDefinition = buildProductIndex(model);
+  model.typesByMap = buildTypeIndex(model);
   const representations = [...model.detailed.values()].filter(record => record.type === "IFCSHAPEREPRESENTATION");
   const issues = [];
 
@@ -201,6 +239,20 @@ export async function analyzeIfc(model, onProgress = () => {}) {
       onProgress({stage: "Checking all shape representations", current: index, total: representations.length, unit: "items"});
       await new Promise(resolve => setTimeout(resolve, 0));
     }
+  }
+  const shellIssues = await analyzeEmptyShells(model, {
+    referenceIndex, productsByDefinition, contextIssueIds: new Set(issues.map(issue => issue.id)),
+    productForRepresentation, displayClass,
+  }, onProgress);
+  issues.push(...shellIssues);
+  const knownProducts = new Map();
+  for (const list of productsByDefinition.values()) for (const product of list) knownProducts.set(product.id, product);
+  for (const type of model.typesByMap.values()) knownProducts.set(type.id, type);
+  for (const issue of issues) {
+    const product = knownProducts.get(issue.productId);
+    issue.revitId = revitId(product);
+    issue.objectType = product?.objectType || null;
+    issue.isType = Boolean(product?.isType);
   }
   onProgress({stage: "Review complete", current: representations.length, total: representations.length, unit: "items"});
   return {

@@ -31,7 +31,7 @@ if (process.argv.includes("--verify-repair") && analysis.repairable) {
   lastPercent = -1;
   const selected = analysis.issues.filter(issue => issue.repairable);
   const repaired = await applyRepairs(file, selected, progress);
-  verification = await verifyRepairs(file, repaired.output, repaired.repairs, progress);
+  verification = await verifyRepairs(file, repaired.output, repaired.repairs, progress, repaired.edits);
 }
 const signatures = {};
 for (const issue of analysis.issues) {

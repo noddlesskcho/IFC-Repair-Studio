@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Static browser tool for repairing missing IFC+SG IfcShapeRepresentation context references.",
+  "description": "Static browser tool for repairing missing IfcShapeRepresentation context references and empty IfcClosedShell geometry in IFC+SG files.",
   "scripts": {
     "build": "node scripts/build-static.mjs",
     "test": "node --test tests/browser/*.test.mjs"

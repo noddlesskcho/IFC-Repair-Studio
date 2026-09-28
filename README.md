@@ -1,6 +1,6 @@
-# IFC+SG IfcShapeRepresentation Repair Tool
+# IFC+SG Repair Tool
 
-IFC+SG IfcShapeRepresentation Repair Tool is a static browser application for
+IFC+SG Repair Tool is a static browser application for
 private, local IFC4 inspection and targeted repair.
 
 The Browser Edition runs entirely from HTML, CSS, and JavaScript. An IFC selected
@@ -56,7 +56,7 @@ deploys the site with the official GitHub Pages actions.
 1. Push the repository to GitHub with `main` as the default branch.
 2. Open **Settings > Pages** in the repository.
 3. Under **Build and deployment**, select **GitHub Actions** as the source.
-4. Open **Actions** and run **Deploy IFC+SG IfcShapeRepresentation Repair Tool**, or push a
+4. Open **Actions** and run **Deploy IFC+SG Repair Tool**, or push a
    commit to `main`.
 5. Wait for both the `build` and `deploy` jobs to complete.
 
@@ -83,6 +83,30 @@ Browser production repair is deliberately narrow:
 - exactly one compatible, project-connected representation context;
 - byte-preserving, variable-length replacement of only the first representation
   attribute.
+
+### Empty IfcClosedShell geometry
+
+Revit can export an `IfcFacetedBrep` whose outer shell has no faces:
+`IFCCLOSEDSHELL(());`. `IfcClosedShell.CfsFaces` is `SET [1:?] OF IfcFace`, so
+the file is invalid IFC4, and some viewers stop processing the model. The tool
+removes this empty geometry:
+
+- the empty `IfcClosedShell` and the `IfcFacetedBrep` that wraps it;
+- the brep reference in `IfcShapeRepresentation.Items`, and any `IfcStyledItem`
+  or presentation layer entry that points at the brep;
+- a representation left with no items, its reference in
+  `IfcProductDefinitionShape` and presentation layers, and a product shape or
+  layer assignment left empty (all of these lists are `[1:?]`);
+- for a product whose only shape was empty, `Representation` is set to `$`
+  (the attribute is optional). No element is deleted.
+
+A shell or brep used in any other way (for example by `IfcShellBasedSurfaceModel`,
+an `IfcRepresentationMap` or `IfcShapeAspect`, or another representation) is
+report-only. A representation that also misses its `ContextOfItems` is repaired
+for the context first; check the repaired file again to remove its empty geometry.
+All empty-shell repairs in one file are applied together because they can share
+records. After repair, the output is reread to confirm that the removed records
+are gone and that no remaining record references them.
 
 Ambiguous or missing compatible contexts remain report-only. ZIP/IFCZIP input,
 PDF/HTML engineering reports, IfcOpenShell schema validation, and geometry-engine
@@ -111,6 +135,6 @@ recommended option for very large models and full semantic validation.
 - A file leaves the browser only when the user explicitly downloads the repaired
   IFC ZIP or otherwise shares it.
 
-> IFC+SG IfcShapeRepresentation Repair Tool performs targeted repairs for known IFC+SG export issues. It is not
+> IFC+SG Repair Tool performs targeted repairs for known IFC+SG export issues. It is not
 > a complete IFC validator or CORENET X compliance checker. A repaired IFC
 > should still undergo the normal submission validation process.

@@ -1,11 +1,27 @@
-import {paginateIssues, RESULTS_PAGE_SIZE} from "./ifc-batch.js?v=1.0.0-r11";
+import {paginateIssues, RESULTS_PAGE_SIZE} from "./ifc-batch.js?v=1.1.0";
 
 const byId = id => document.getElementById(id);
 
-const resultsView = {analysis: null, fileIndex: "all", page: 1};
+const resultsView = {analysis: null, fileIndex: "all"};
 
 export const elements = {
   selectCard: byId("select-card"),
+  breakdown: byId("issue-breakdown"),
+  fileErrors: byId("file-errors"),
+  fileFilterRow: byId("file-filter-row"),
+  fileFilter: byId("file-filter"),
+  shellPanel: byId("shell-panel"),
+  shellSummary: byId("shell-summary"),
+  shellBody: byId("shell-body"),
+  shellPage: byId("shell-page"),
+  shellPrevious: byId("shell-previous"),
+  shellNext: byId("shell-next"),
+  contextPanel: byId("context-panel"),
+  contextSummary: byId("context-summary"),
+  contextBody: byId("context-body"),
+  contextPage: byId("context-page"),
+  contextPrevious: byId("context-previous"),
+  contextNext: byId("context-next"),
   input: byId("file-input"),
   choose: byId("choose-button"),
   changeFile: byId("change-file-button"),
@@ -18,21 +34,12 @@ export const elements = {
   progressPercent: byId("progress-percent"),
   progressDetail: byId("progress-detail"),
   results: byId("results-section"),
-  body: byId("results-body"),
   issues: byId("issues-count"),
   repairable: byId("repairable-count"),
   review: byId("review-count"),
   schema: byId("schema-value"),
   signatureSummary: byId("signature-summary"),
   repairFileSummary: byId("repair-file-summary"),
-  allRepairableMessage: byId("all-repairable-message"),
-  reviewDetails: byId("review-details"),
-  detailsSummary: byId("details-summary"),
-  fileFilter: byId("file-filter"),
-  pageSummary: byId("page-summary"),
-  pageNumber: byId("page-number"),
-  previousPage: byId("previous-page"),
-  nextPage: byId("next-page"),
   repair: byId("repair-button"),
   checkAnother: byId("check-another"),
   completion: byId("completion-card"),
@@ -103,6 +110,14 @@ function cell(row, value, className = "") {
   return td;
 }
 
+const isShell = issue => issue.issueType === "emptyClosedShell";
+
+// One view per issue table; both follow the shared file filter.
+const views = {
+  shell: {page: 1, match: isShell},
+  context: {page: 1, match: issue => !isShell(issue)},
+};
+
 function populateFileFilter(analysis) {
   elements.fileFilter.replaceChildren();
   const all = document.createElement("option");
@@ -120,59 +135,120 @@ function populateFileFilter(analysis) {
   elements.fileFilter.value = resultsView.fileIndex;
 }
 
-function renderResultsPage() {
+// Element name cell; items the tool will not repair carry a visible tag and the reason.
+function nameCell(row, issue) {
+  const td = cell(row, issue.productName);
+  if (!issue.repairable) {
+    const tag = document.createElement("span");
+    tag.className = "pill review";
+    tag.textContent = "NOT REPAIRED";
+    td.prepend(tag);
+    const reason = document.createElement("small");
+    reason.textContent = issue.reason;
+    td.append(reason);
+  }
+}
+
+const classLabel = issue => issue.isType ? `${issue.productType} (type)` : issue.productType;
+const viewLabel = issue => issue.signature?.startsWith("footprint|") ? "FootPrint (2D plan)" : "Body (3D model)";
+
+const TABLES = {
+  shell: {
+    body: () => elements.shellBody, page: () => elements.shellPage,
+    previous: () => elements.shellPrevious, next: () => elements.shellNext,
+    row: (row, issue) => {
+      nameCell(row, issue);
+      cell(row, issue.objectType || classLabel(issue));
+      cell(row, issue.revitId || "—", "mono strong");
+      cell(row, issue.globalId || "—", "mono");
+    },
+  },
+  context: {
+    body: () => elements.contextBody, page: () => elements.contextPage,
+    previous: () => elements.contextPrevious, next: () => elements.contextNext,
+    row: (row, issue) => {
+      nameCell(row, issue);
+      cell(row, classLabel(issue));
+      cell(row, `#${issue.id}`, "mono strong");
+      cell(row, viewLabel(issue));
+    },
+  },
+};
+
+function renderTable(key) {
   const analysis = resultsView.analysis;
   if (!analysis) return;
-  const page = paginateIssues(analysis.issues, resultsView.fileIndex, resultsView.page, RESULTS_PAGE_SIZE);
-  resultsView.page = page.currentPage;
-  elements.body.replaceChildren();
-
+  const view = views[key], table = TABLES[key];
+  const page = paginateIssues(analysis.issues.filter(view.match), resultsView.fileIndex, view.page, RESULTS_PAGE_SIZE);
+  view.page = page.currentPage;
+  table.body().replaceChildren();
   for (const issue of page.items) {
     const row = document.createElement("tr");
-    const outcome = document.createElement("td");
-    const pill = document.createElement("span");
-    pill.className = `pill ${issue.repairable ? "safe" : "review"}`;
-    pill.textContent = issue.status.toUpperCase();
-    outcome.append(pill);
-    row.append(outcome);
-    cell(row, issue.fileName);
-    cell(row, `#${issue.id}`);
-    cell(row, issue.identifier);
-    cell(row, issue.representationType);
-    cell(row, issue.currentContext);
-    cell(row, issue.proposedContext);
-    cell(row, issue.candidateContextId ? `#${issue.candidateContextId}` : "—");
-    cell(row, issue.referencedBy.join(", "));
-    cell(row, issue.reason);
-    elements.body.append(row);
+    table.row(row, issue);
+    table.body().append(row);
   }
-
-  const visibleErrors = analysis.fileErrors.filter(error =>
-    resultsView.fileIndex === "all" || error.fileIndex === Number(resultsView.fileIndex));
-  for (const fileError of visibleErrors) {
+  if (!page.totalItems) {
     const row = document.createElement("tr");
-    const td = cell(row, `${fileError.fileName}: ${fileError.message}`, "file-error");
-    td.colSpan = 10;
-    elements.body.append(row);
+    cell(row, "No issues of this kind in the selected file.").colSpan = 4;
+    table.body().append(row);
   }
+  table.page().textContent = `Page ${page.currentPage.toLocaleString()} of ${page.totalPages.toLocaleString()} · ${page.totalItems.toLocaleString()} item${page.totalItems === 1 ? "" : "s"}`;
+  table.previous().disabled = page.currentPage <= 1;
+  table.next().disabled = page.currentPage >= page.totalPages;
+}
 
-  if (!page.totalItems && !visibleErrors.length) {
-    const row = document.createElement("tr");
-    const td = cell(row, analysis.unsupportedMessage || "No supported missing geometry references were detected for this file.");
-    td.colSpan = 10;
-    elements.body.append(row);
+function renderBreakdown(analysis) {
+  const counts = analysis.counts || {};
+  const rows = [
+    ["Empty IfcClosedShell", counts.emptyClosedShell || 0, "shell"],
+    ["Body context missing", (counts.bodySweptSolid || 0) + (counts.bodyTessellation || 0), ""],
+    ["FootPrint context missing", counts.footprintCurve2D || 0, ""],
+  ];
+  elements.breakdown.replaceChildren(...rows.map(([label, count, className]) => {
+    const item = document.createElement("li");
+    if (className && count) item.className = className;
+    const name = document.createElement("span");
+    name.textContent = label;
+    const value = document.createElement("b");
+    value.textContent = count.toLocaleString();
+    item.append(name, value);
+    return item;
+  }));
+}
+
+function panelSummary(issues, repairText) {
+  const repairable = issues.filter(issue => issue.repairable).length;
+  const review = issues.length - repairable;
+  const parts = [`${issues.length.toLocaleString()} item${issues.length === 1 ? "" : "s"}`];
+  if (repairable) parts.push(repairText(repairable));
+  if (review) parts.push(`${review.toLocaleString()} cannot be repaired automatically`);
+  return `${parts.join(" · ")}.`;
+}
+
+function renderPanels(analysis, changedAnalysis) {
+  const shellIssues = analysis.issues.filter(isShell);
+  const contextIssues = analysis.issues.filter(issue => !isShell(issue));
+  elements.shellPanel.classList.toggle("hidden", !shellIssues.length);
+  elements.contextPanel.classList.toggle("hidden", !contextIssues.length);
+  elements.fileFilterRow.classList.toggle("hidden", analysis.files.length < 2 || !analysis.issues.length);
+  if (changedAnalysis) {
+    elements.shellPanel.open = false;
+    elements.contextPanel.open = false;
+    views.shell.page = 1;
+    views.context.page = 1;
   }
-
-  const scope = resultsView.fileIndex === "all"
-    ? "across all files"
-    : `in ${analysis.files[Number(resultsView.fileIndex)]?.fileName || "this file"}`;
-  const errorSummary = visibleErrors.length
-    ? ` · ${visibleErrors.length.toLocaleString()} file${visibleErrors.length === 1 ? "" : "s"} could not be checked`
-    : "";
-  elements.pageSummary.textContent = `Showing ${page.start.toLocaleString()}–${page.end.toLocaleString()} of ${page.totalItems.toLocaleString()} issues ${scope} · 20 per page${errorSummary}`;
-  elements.pageNumber.textContent = `Page ${page.currentPage.toLocaleString()} of ${page.totalPages.toLocaleString()}`;
-  elements.previousPage.disabled = page.currentPage <= 1;
-  elements.nextPage.disabled = page.currentPage >= page.totalPages;
+  elements.shellSummary.textContent = panelSummary(shellIssues,
+    count => `${count.toLocaleString()} will have their empty shapes deleted, please check them first`);
+  elements.contextSummary.textContent = panelSummary(contextIssues,
+    count => `${count.toLocaleString()} will get the missing link (nothing deleted)`);
+  elements.fileErrors.classList.toggle("hidden", !analysis.fileErrors.length);
+  elements.fileErrors.replaceChildren(...analysis.fileErrors.map(fileError => {
+    const item = document.createElement("li");
+    item.textContent = `${fileError.fileName}: ${fileError.message}`;
+    return item;
+  }));
+  renderTable("shell");
+  renderTable("context");
 }
 
 export function renderResults(analysis) {
@@ -180,7 +256,6 @@ export function renderResults(analysis) {
   resultsView.analysis = analysis;
   if (changedAnalysis) {
     resultsView.fileIndex = "all";
-    resultsView.page = 1;
     populateFileFilter(analysis);
   }
   elements.progressCard.classList.add("hidden");
@@ -190,12 +265,9 @@ export function renderResults(analysis) {
   elements.repairable.textContent = analysis.repairable.toLocaleString();
   elements.review.textContent = (analysis.reviewOnly + analysis.fileErrors.length).toLocaleString();
   elements.schema.textContent = analysis.schema;
-  const counts = analysis.counts || {};
-  elements.signatureSummary.textContent =
-    `Files checked: ${analysis.successfulFiles.toLocaleString()} of ${analysis.filesScanned.toLocaleString()} · ` +
-    `Body / SweptSolid: ${(counts.bodySweptSolid || 0).toLocaleString()} · ` +
-    `Body / Tessellation: ${(counts.bodyTessellation || 0).toLocaleString()} · ` +
-    `FootPrint / Curve2D: ${(counts.footprintCurve2D || 0).toLocaleString()}`;
+  elements.signatureSummary.textContent = analysis.issues.length || analysis.fileErrors.length
+    ? `Files checked: ${analysis.successfulFiles.toLocaleString()} of ${analysis.filesScanned.toLocaleString()}.`
+    : "No supported missing contexts or empty IfcClosedShell geometry were detected. There is nothing to repair.";
   const repairFileIndexes = new Set(analysis.issues.filter(issue => issue.repairable).map(issue => issue.fileIndex));
   const cleanFiles = analysis.files.filter(file => !file.error && file.issueCount === 0).length;
   const manualOnlyFiles = analysis.files.filter(file => !file.error && file.issueCount > 0 &&
@@ -205,24 +277,18 @@ export function renderResults(analysis) {
   if (manualOnlyFiles) fileClauses.push(`${manualOnlyFiles.toLocaleString()} require manual review only`);
   if (analysis.fileErrors.length) fileClauses.push(`${analysis.fileErrors.length.toLocaleString()} could not be checked`);
   elements.repairFileSummary.textContent = `${fileClauses.join(" · ")}.`;
-
-  const hasDetails = analysis.issues.length > 0 || analysis.fileErrors.length > 0;
-  elements.reviewDetails.classList.toggle("hidden", !hasDetails);
-  if (changedAnalysis) elements.reviewDetails.open = false;
-  elements.detailsSummary.textContent = `View repair details (${analysis.issues.length.toLocaleString()} issue${analysis.issues.length === 1 ? "" : "s"})`;
-  elements.allRepairableMessage.classList.remove("hidden");
-  elements.allRepairableMessage.textContent = analysis.repairable
-    ? `${analysis.repairable.toLocaleString()} supported issue${analysis.repairable === 1 ? " is" : "s are"} ready for automatic repair${analysis.reviewOnly ? `; ${analysis.reviewOnly.toLocaleString()} require manual review` : ""}.`
-    : analysis.reviewOnly
-      ? `${analysis.reviewOnly.toLocaleString()} supported issue${analysis.reviewOnly === 1 ? " requires" : "s require"} manual review; none can be repaired automatically.`
-      : "No supported missing contexts were detected. There is nothing to repair.";
-  if (hasDetails) renderResultsPage();
+  renderBreakdown(analysis);
+  renderPanels(analysis, changedAnalysis);
   updateRepairButton(analysis);
+}
+
+export function repairAllowed(analysis) {
+  return Boolean(analysis?.issues.some(issue => issue.selected && issue.repairable));
 }
 
 export function updateRepairButton(analysis) {
   const count = analysis.issues.filter(issue => issue.selected && issue.repairable).length;
-  elements.repair.disabled = count === 0;
+  elements.repair.disabled = !repairAllowed(analysis);
   elements.repair.textContent = count ? "Repair all files" : "No safe repairs selected";
 }
 
@@ -256,9 +322,9 @@ export function showCompletion(result, packageInfo, onDownload) {
   elements.results.classList.add("hidden");
   elements.completion.classList.remove("hidden");
   elements.completionSummary.textContent =
-    `${result.successfulChanges.toLocaleString()} of ${result.expectedChanges.toLocaleString()} planned context repair${result.expectedChanges === 1 ? "" : "s"} verified; ` +
+    `${result.successfulChanges.toLocaleString()} of ${result.expectedChanges.toLocaleString()} planned repair${result.expectedChanges === 1 ? "" : "s"} verified; ` +
     `${result.unexpectedChanges.toLocaleString()} unexpected changes; ` +
-    `${result.remainingSupportedMissing.toLocaleString()} supported missing context${result.remainingSupportedMissing === 1 ? "" : "s"} remain. ` +
+    `${result.remainingSupportedMissing.toLocaleString()} supported issue${result.remainingSupportedMissing === 1 ? "" : "s"} remain. ` +
     `${packageInfo.outputCount.toLocaleString()} repaired IFC file${packageInfo.outputCount === 1 ? " is" : "s are"} ready to package in one ZIP.`;
   const packageClauses = [`${packageInfo.outputCount.toLocaleString()} file${packageInfo.outputCount === 1 ? "" : "s"} with verified repairs will be included`];
   if (packageInfo.cleanFiles) packageClauses.push(`${packageInfo.cleanFiles.toLocaleString()} file${packageInfo.cleanFiles === 1 ? "" : "s"} needed no repair and will not be included`);
@@ -322,7 +388,6 @@ export function showError(error) {
 export function resetUi() {
   resultsView.analysis = null;
   resultsView.fileIndex = "all";
-  resultsView.page = 1;
   elements.input.value = "";
   elements.selectCard.classList.remove("hidden");
   elements.selectCard.classList.remove("has-file");
@@ -331,23 +396,27 @@ export function resetUi() {
   elements.results.classList.add("hidden");
   elements.completion.classList.add("hidden");
   elements.error.classList.add("hidden");
-  elements.body.replaceChildren();
   elements.downloadList.replaceChildren();
   elements.downloadProgressPanel.classList.add("hidden");
+  elements.shellPanel.classList.add("hidden");
+  elements.contextPanel.classList.add("hidden");
+  elements.shellPanel.open = false;
+  elements.contextPanel.open = false;
+  elements.shellBody.replaceChildren();
+  elements.contextBody.replaceChildren();
+  elements.breakdown.replaceChildren();
+  elements.fileErrors.replaceChildren();
   setStep(1);
 }
 
+for (const key of Object.keys(TABLES)) {
+  TABLES[key].previous().addEventListener("click", () => { views[key].page -= 1; renderTable(key); });
+  TABLES[key].next().addEventListener("click", () => { views[key].page += 1; renderTable(key); });
+}
 elements.fileFilter.addEventListener("change", () => {
   resultsView.fileIndex = elements.fileFilter.value;
-  resultsView.page = 1;
-  renderResultsPage();
+  views.shell.page = 1;
+  views.context.page = 1;
+  renderTable("shell");
+  renderTable("context");
 });
-elements.previousPage.addEventListener("click", () => {
-  resultsView.page -= 1;
-  renderResultsPage();
-});
-elements.nextPage.addEventListener("click", () => {
-  resultsView.page += 1;
-  renderResultsPage();
-});
-

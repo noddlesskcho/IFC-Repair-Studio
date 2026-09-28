@@ -1,4 +1,4 @@
-name: Deploy IFC+SG IfcShapeRepresentation Repair Tool
+name: Deploy IFC+SG Repair Tool
 
 on:
   push:

@@ -3,19 +3,19 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Local browser repair for missing IFC geometry context references in Autodesk Revit 2025 and 2026 IFC+SG exports.">
+  <meta name="description" content="Local browser repair for missing IFC geometry context references and empty IfcClosedShell geometry in Autodesk Revit 2025 and 2026 IFC+SG exports.">
   <meta name="referrer" content="no-referrer">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
-  <title>IFC+SG IfcShapeRepresentation Repair Tool</title>
+  <title>IFC+SG Repair Tool</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23175cd3'/%3E%3Cpath d='M18 20h28v7H25v7h17v7H25v11h-7z' fill='white'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="./css/app.css?v=1.0.0-r14">
+  <link rel="stylesheet" href="./css/app.css?v=1.1.0">
 </head>
 <body>
   <header class="site-header">
     <div>
-      <p class="eyebrow">REVIT 2025 / 2026 IFC+SG &middot; IFC4 GEOMETRY REFERENCE REPAIR &middot; CORENET X PRE-SUBMISSION</p>
-      <h1>IFC+SG IfcShapeRepresentation Repair Tool</h1>
-      <p class="subtitle">Repairs missing <code>IfcShapeRepresentation</code> context references in IFC+SG files exported from Autodesk Revit 2025 and 2026. This issue may cause the IFC schema check to fail in the CORENET X Submission Portal.</p>
+      <p class="eyebrow">REVIT 2025 / 2026 IFC+SG &middot; IFC4 GEOMETRY REPAIR &middot; CORENET X PRE-SUBMISSION</p>
+      <h1>IFC+SG Repair Tool</h1>
+      <p class="subtitle">Checks IFC+SG files exported from Autodesk Revit 2025 and 2026 and repairs two known export problems: shapes missing their geometry context (<code>IfcShapeRepresentation.ContextOfItems</code>) and empty 3D shapes with no surfaces (<code>IfcClosedShell</code>). Either problem can make the IFC schema check or model processing fail in the CORENET X Submission Portal.</p>
     </div>
     <span class="privacy-badge"><span>Your IFC file is processed locally.</span><span>It is not uploaded or stored.</span></span>
   </header>
@@ -54,7 +54,9 @@
 
     <section class="hidden" id="results-section">
       <div class="metrics">
-        <article class="metric"><strong id="issues-count">0</strong><span>Missing ContextOfItems detected</span></article>
+        <article class="metric metric-breakdown"><strong id="issues-count">0</strong><span>Issues detected</span>
+          <ul id="issue-breakdown" class="breakdown" aria-label="Issues by type"></ul>
+        </article>
         <article class="metric"><strong id="repairable-count">0</strong><span>Ready to repair</span></article>
         <article class="metric amber"><strong id="review-count">0</strong><span>Unable to repair automatically</span></article>
         <article class="metric"><strong id="schema-value">-</strong><span>IFC schema</span></article>
@@ -64,25 +66,63 @@
         <div class="section-heading">
           <div><h2>Repair Results</h2><p id="signature-summary">All supported shape representations are checked, including ShapeAspect and layer-assigned representations.</p><p id="repair-file-summary" class="repair-file-summary"></p></div>
         </div>
-        <div id="all-repairable-message" class="compact-success hidden" aria-live="polite"></div>
-        <details id="review-details" class="result-details hidden">
-          <summary id="details-summary">View repair details</summary>
-          <div class="results-controls">
-            <label for="file-filter">View results for</label>
-            <select id="file-filter" aria-label="Choose a file to view"></select>
-            <span id="page-summary" class="muted" aria-live="polite"></span>
+        <ul id="file-errors" class="file-errors hidden" aria-live="polite"></ul>
+        <div id="file-filter-row" class="results-controls hidden">
+          <label for="file-filter">Show elements for</label>
+          <select id="file-filter"></select>
+        </div>
+        <details id="shell-panel" class="issue-panel shell hidden">
+          <summary>
+            <span class="panel-heading">
+              <span class="panel-title">Check these elements in Revit before you repair</span>
+              <span id="shell-summary" class="panel-sub"></span>
+            </span>
+            <span class="expand-cue" aria-hidden="true"></span>
+          </summary>
+          <div class="panel-body">
+            <div class="panel-explain shell">
+              <p><b>What is wrong</b>These elements contain 3D shapes with no surfaces at all (an empty <code>IfcClosedShell</code>). They show nothing in any viewer, but they break the IFC rules and can stop the CORENET X portal from processing the whole model.</p>
+              <p><b>What the repair does</b>It deletes only the empty shapes. The element itself stays in the file with its name, Revit ID, properties and level. If all of an element's shapes were empty, the element keeps its data but has no 3D shape afterwards. It had nothing visible before either.</p>
+              <p><b>What you should check</b>Find each element in Revit with <strong>Manage &rsaquo; Select by ID</strong> and its Revit ID. Make sure it is not something that must be seen as a 3D object in your submission. If it should have a real shape, fix the element in Revit and export the IFC again instead of using this repair.</p>
+            </div>
+            <div class="table-wrap">
+              <table class="issue-table">
+                <thead><tr><th>Element name</th><th>Type</th><th>Revit ID</th><th>GlobalId</th></tr></thead>
+                <tbody id="shell-body"></tbody>
+              </table>
+            </div>
+            <nav class="pagination" aria-label="Empty IfcClosedShell pages">
+              <button id="shell-previous" class="button" type="button">Previous</button>
+              <span id="shell-page">Page 1 of 1</span>
+              <button id="shell-next" class="button" type="button">Next</button>
+            </nav>
           </div>
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>Status</th><th>File</th><th>STEP ID</th><th>Identifier</th><th>Type</th><th>Current context</th><th>Proposed context</th><th>Context STEP ID</th><th>Referenced by</th><th>Reason</th></tr></thead>
-              <tbody id="results-body"></tbody>
-            </table>
+        </details>
+        <details id="context-panel" class="issue-panel hidden">
+          <summary>
+            <span class="panel-heading">
+              <span class="panel-title">Missing geometry context (ContextOfItems)</span>
+              <span id="context-summary" class="panel-sub"></span>
+            </span>
+            <span class="expand-cue" aria-hidden="true"></span>
+          </summary>
+          <div class="panel-body">
+            <div class="panel-explain">
+              <p><b>What is wrong</b>Each shape in an IFC file must say which view it belongs to: the 3D model (<strong>Body</strong>) or the 2D plan outline (<strong>FootPrint</strong>). These shapes are missing that link, so the portal's IFC schema check can reject the file.</p>
+              <p><b>What the repair does</b>It adds the missing link to the model's only matching context. Nothing is deleted and no shape is changed, so no check in Revit is needed. A row marked "(type)" is a Revit type: the fix applies to every placed instance of that type.</p>
+            </div>
+            <div class="table-wrap">
+              <table class="issue-table">
+                <thead><tr><th>Element name</th><th>Type</th><th>STEP line</th><th>View</th></tr></thead>
+                <tbody id="context-body"></tbody>
+              </table>
+            </div>
+            <nav class="pagination" aria-label="Missing geometry context pages">
+              <button id="context-previous" class="button" type="button">Previous</button>
+              <span id="context-page">Page 1 of 1</span>
+              <button id="context-next" class="button" type="button">Next</button>
+            </nav>
           </div>
-          <nav class="pagination" aria-label="Repair result pages">
-            <button id="previous-page" class="button" type="button">Previous</button>
-            <span id="page-number">Page 1 of 1</span>
-            <button id="next-page" class="button" type="button">Next</button>
-          </nav>
         </details>
         <div class="actions">
           <button id="check-another" class="button" type="button">Check another IFC</button>
@@ -97,7 +137,8 @@
       <p id="completion-summary"></p>
       <p id="completion-package-summary" class="package-summary"></p>
       <ul>
-        <li>Only selected <code>IfcShapeRepresentation.ContextOfItems</code> values were changed.</li>
+        <li>Only the planned edits were made: missing <code>IfcShapeRepresentation.ContextOfItems</code> values were filled, and empty <code>IfcClosedShell</code> geometry was removed together with the references to it.</li>
+        <li>No element was deleted. An element whose only geometry was empty keeps its data with <code>Representation = $</code>.</li>
         <li>The original IFC remains unchanged.</li>
         <li>No file was uploaded or transmitted by this application.</li>
       </ul>
@@ -122,10 +163,10 @@
   </main>
 
   <footer>
-    <p><strong>Browser repair scope:</strong> IFC4 Body/SweptSolid, Body/Tessellation, and FootPrint/Curve2D missing-context repairs when exactly one compatible project-connected context is available.</p>
+    <p><strong>Browser repair scope:</strong> IFC4 Body/SweptSolid, Body/Tessellation, and FootPrint/Curve2D missing-context repairs when exactly one compatible project-connected context is available, and removal of empty <code>IfcClosedShell</code> geometry reached through <code>IfcFacetedBrep</code>.</p>
     <p>This tool is not a complete IFC validator or CORENET X compliance checker.</p>
   </footer>
-  <script type="module" src="./js/app.js?v=1.0.0-r15"></script>
+  <script type="module" src="./js/app.js?v=1.1.0"></script>
 </body>
 </html>
 

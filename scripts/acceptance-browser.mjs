@@ -4,7 +4,7 @@ import {Readable} from "node:stream";
 import {createWriteStream} from "node:fs";
 
 import {analyzeIfc} from "../js/ifc-analyzer.js";
-import {applyRepairs, verifyRepairedModel, verifyRepairs} from "../js/ifc-fixer.js";
+import {applyRepairs, verifyNoDanglingReferences, verifyRepairedModel, verifyRepairs} from "../js/ifc-fixer.js";
 import {loadIfc} from "../js/ifc-loader.js";
 
 const [sourcePath, outputPath] = process.argv.slice(2);
@@ -21,11 +21,11 @@ const source = named(await openAsBlob(sourcePath), sourcePath);
 const sourceModel = await loadIfc(source);
 const original = await analyzeIfc(sourceModel);
 const selected = original.issues.filter(issue => issue.repairable);
-const {output, repairs} = await applyRepairs(source, selected);
-const byteVerification = await verifyRepairs(source, output, repairs);
+const {output, repairs, edits} = await applyRepairs(source, selected);
+const byteVerification = await verifyRepairs(source, output, repairs, () => {}, edits);
 named(output, outputPath || "repaired.ifc");
 const outputModel = await loadIfc(output);
-const modelVerification = verifyRepairedModel(outputModel, repairs);
+const modelVerification = {...verifyRepairedModel(outputModel, repairs), ...await verifyNoDanglingReferences(output, repairs)};
 const repaired = await analyzeIfc(outputModel);
 
 if (outputPath) {

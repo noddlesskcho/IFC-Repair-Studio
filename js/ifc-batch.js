@@ -1,4 +1,4 @@
-const emptyCounts = () => ({bodySweptSolid: 0, bodyTessellation: 0, footprintCurve2D: 0});
+const emptyCounts = () => ({bodySweptSolid: 0, bodyTessellation: 0, footprintCurve2D: 0, emptyClosedShell: 0});
 
 export function combineAnalyses(entries) {
   const counts = emptyCounts();
@@ -41,7 +41,7 @@ export function combineAnalyses(entries) {
     productsScanned,
     repairable: issues.filter(issue => issue.repairable).length,
     reviewOnly: issues.filter(issue => !issue.repairable).length,
-    unsupportedMessage: issues.length || fileErrors.length ? null : "No supported missing geometry references were detected.",
+    unsupportedMessage: issues.length || fileErrors.length ? null : "No supported missing contexts or empty IfcClosedShell geometry were detected.",
   };
 }
 
