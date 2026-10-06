@@ -1,4 +1,4 @@
-import {paginateIssues, RESULTS_PAGE_SIZE} from "./ifc-batch.js?v=1.1.0";
+import {paginateIssues, RESULTS_PAGE_SIZE} from "./ifc-batch.js?v=2.0";
 
 const byId = id => document.getElementById(id);
 

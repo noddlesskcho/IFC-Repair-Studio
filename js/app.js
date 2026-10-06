@@ -1,13 +1,13 @@
-import {analyzeIfc} from "./ifc-analyzer.js?v=1.1.0";
-import {combineAnalyses, selectedIssuesForFile} from "./ifc-batch.js?v=1.1.0";
-import {downloadBlob, repairedFileName} from "./ifc-exporter.js?v=1.1.0";
-import {applyRepairs, verifyNoDanglingReferences, verifyRepairedModel, verifyRepairs} from "./ifc-fixer.js?v=1.1.0";
-import {loadIfc} from "./ifc-loader.js?v=1.1.0";
-import {createRepairedZip, repairedArchiveName} from "./zip-exporter.js?v=1.1.0";
+import {analyzeIfc} from "./ifc-analyzer.js?v=2.0";
+import {combineAnalyses, selectedIssuesForFile} from "./ifc-batch.js?v=2.0";
+import {downloadBlob, repairedFileName} from "./ifc-exporter.js?v=2.0";
+import {applyRepairs, verifyNoDanglingReferences, verifyRepairedModel, verifyRepairs} from "./ifc-fixer.js?v=2.0";
+import {loadIfc} from "./ifc-loader.js?v=2.0";
+import {createRepairedZip, repairedArchiveName} from "./zip-exporter.js?v=2.0";
 import {
   elements, renderResults, repairAllowed, resetUi, setStep, showCompletion, showError, showFiles,
   updateProgress, updateRepairButton,
-} from "./ui.js?v=1.1.0";
+} from "./ui.js?v=2.0";
 
 const state = {entries: [], analysis: null, outputs: [], archive: null, busy: false};
 

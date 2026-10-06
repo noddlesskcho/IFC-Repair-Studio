@@ -1,4 +1,4 @@
-import {scanReferences} from "./ifc-loader.js?v=1.1.0";
+import {scanReferences} from "./ifc-loader.js?v=2.0";
 
 const encoder = new TextEncoder();
 // windows-1252 decodes one byte to one character, so text offsets equal byte offsets.

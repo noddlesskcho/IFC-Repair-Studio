@@ -1,4 +1,4 @@
-import {codeRefs, scanReferences, stepString} from "./ifc-loader.js?v=1.1.0";
+import {codeRefs, scanReferences, stepString} from "./ifc-loader.js?v=2.0";
 
 // IfcClosedShell.CfsFaces is SET [1:?] OF IfcFace, so IFCCLOSEDSHELL(()) is invalid IFC4.
 // The repair removes each empty shell, the IfcFacetedBrep that wraps it, and every reference

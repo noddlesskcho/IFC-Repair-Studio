@@ -1,6 +1,6 @@
 {
   "name": "ifc-shape-representation-repair-tool",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "description": "Static browser tool for repairing missing IfcShapeRepresentation context references and empty IfcClosedShell geometry in IFC+SG files.",
