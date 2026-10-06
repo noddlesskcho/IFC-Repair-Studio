@@ -1,5 +1,6 @@
-import {refs, stepString} from "./ifc-loader.js?v=2.0";
-import {analyzeEmptyShells} from "./ifc-empty-shells.js?v=2.0";
+import {refs, stepString} from "./ifc-loader.js?v=2.1";
+import {analyzeEmptyShells} from "./ifc-empty-shells.js?v=2.1";
+import {analyzeSpaces} from "./ifc-spaces.js?v=2.1";
 
 const SUPPORTED = new Set(["body|sweptsolid", "body|tessellation", "footprint|curve2d"]);
 const REFERENCE_LABELS = new Map([
@@ -179,7 +180,7 @@ function summaryCounts(issues) {
 export async function analyzeIfc(model, onProgress = () => {}) {
   if (model.schema !== "IFC4") {
     return {schema: model.schema, issues: [], productsScanned: 0, representationsScanned: 0,
-      repairable: 0, reviewOnly: 0, counts: summaryCounts([]),
+      repairable: 0, reviewOnly: 0, counts: summaryCounts([]), spaces: await analyzeSpaces(model, onProgress),
       unsupportedMessage: `This file uses ${model.schema}. Browser repair is limited to IFC4.`};
   }
 
@@ -263,6 +264,7 @@ export async function analyzeIfc(model, onProgress = () => {}) {
     repairable: issues.filter(issue => issue.repairable).length,
     reviewOnly: issues.filter(issue => !issue.repairable).length,
     counts: summaryCounts(issues),
+    spaces: await analyzeSpaces(model, onProgress),
     unsupportedMessage: null,
   };
 }

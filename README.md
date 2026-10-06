@@ -71,7 +71,9 @@ subdirectory without redirects or history routing.
 Browser production repair is deliberately narrow:
 
 - uncompressed `.ifc` input;
-- IFC4 schema;
+- IFC4 schema only. CORENET X does not accept other schemas, so a file with any
+  other `FILE_SCHEMA` (for example IFC2X3) is blocked as soon as its header is
+  read, and the results show a red IFC schema box with a note;
 - all `IfcShapeRepresentation` entities, including representations referenced by
   `IfcProductDefinitionShape`, `IfcShapeAspect`, presentation layer assignments,
   and `IfcRepresentationMap`;
@@ -104,6 +106,25 @@ for the context first; check the repaired file again to remove its empty geometr
 All empty-shell repairs in one file are applied together because they can share
 records. After repair, the output is reread to confirm that the removed records
 are gone and that no remaining record references them.
+
+### Areas without geometry (report only)
+
+Every `IfcSpace` (Revit room, space or area) whose `Representation` is `$` is
+listed with its number, name, level, GUID and Revit Lookup ID (from
+`IfcSpaceType.Tag`). The IFC has no correct outline for these spaces, so the tool
+does not change them. A "Why no geometry" reason is read from the space's
+`Qto_SpaceBaseQuantities` area and height:
+
+- area and height present: Revit could not build the 3D shape from the room
+  boundary (for example short or overlapping boundary lines, slivers or gaps);
+- area 0: the room or area is not enclosed, or is redundant;
+- area present but height 0: the upper limit is at or below the base;
+- no base quantities: the cause cannot be read from the file.
+
+The "Areas without geometry" Excel report (`<file>_Areas_without_geometry.xlsx`,
+or `IFC-SG_Areas_without_geometry.xlsx` for several files) lists each space with
+its reason and what to do in Revit. It can be downloaded from the results, and it
+is also added to the repaired ZIP.
 
 Ambiguous or missing compatible contexts remain report-only. ZIP/IFCZIP input,
 PDF/HTML engineering reports, IfcOpenShell schema validation, and geometry-engine

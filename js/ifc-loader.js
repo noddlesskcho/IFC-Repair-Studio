@@ -13,6 +13,14 @@ const DETAILED_TYPES = new Set([
 
 export class IfcInputError extends Error {}
 
+// CORENET X accepts IFC4 (IFC+SG) only, so any other schema is rejected before the file is read.
+export class IfcSchemaError extends IfcInputError {
+  constructor(schema) {
+    super(`CORENET X does not support ${schema} files. Export the model from Revit again as IFC4 with the IFC+SG settings, then check the new file.`);
+    this.schema = schema;
+  }
+}
+
 export function splitStepArguments(value) {
   const result = [];
   let start = 0, depth = 0, quoted = false, comment = false;
@@ -92,9 +100,59 @@ function compactDetailedRecord(record) {
   } else if (record.type === "IFCREPRESENTATIONMAP") {
     record.args = [record.args[0], record.args[1]];
   } else if (record.type === "IFCPROJECT") {
-    record.args = Array.from({length: 8}, (_, index) => record.args[index]);
+    // Attribute 9 (UnitsInContext) gives the project units used for space areas and heights.
+    record.args = Array.from({length: 9}, (_, index) => record.args[index]);
   }
   return record;
+}
+
+// Records the IfcSpace check needs: spaces, storeys, space types, the relationships that link them,
+// and the Revit base quantities (area, height), space boundaries and units that explain a missing shape.
+const SPATIAL_TYPES = new Set([
+  "IFCSPACE", "IFCBUILDINGSTOREY", "IFCSPACETYPE",
+  "IFCRELAGGREGATES", "IFCRELCONTAINEDINSPATIALSTRUCTURE", "IFCRELDEFINESBYTYPE", "IFCRELDEFINESBYPROPERTIES",
+  "IFCELEMENTQUANTITY", "IFCQUANTITYAREA", "IFCQUANTITYLENGTH", "IFCRELSPACEBOUNDARY", "IFCSIUNIT", "IFCUNITASSIGNMENT",
+]);
+// Argument positions of [parent, children] in each relationship.
+const RELATION_SLOTS = {
+  IFCRELAGGREGATES: ["aggregates", 4, 5],
+  IFCRELCONTAINEDINSPATIALSTRUCTURE: ["containment", 5, 4],
+  IFCRELDEFINESBYTYPE: ["typeLinks", 5, 4],
+  IFCRELDEFINESBYPROPERTIES: ["quantityLinks", 5, 4],
+};
+const SPACE_QUANTITIES = new Set(["'GrossFloorArea'", "'NetFloorArea'", "'Height'"]);
+
+function captureSpatialRecord(spatial, record) {
+  const args = record.args;
+  if (record.type === "IFCQUANTITYAREA" || record.type === "IFCQUANTITYLENGTH") {
+    if (SPACE_QUANTITIES.has(args[0])) spatial.quantities.set(record.id, {name: stepString(args[0]), value: Number(args[3])});
+  } else if (record.type === "IFCELEMENTQUANTITY") {
+    if (args[2] === "'Qto_SpaceBaseQuantities'") spatial.spaceQuantitySets.set(record.id, refs(args[5]));
+  } else if (record.type === "IFCRELDEFINESBYPROPERTIES") {
+    // Only links to space base quantities matter; those sets are written before the link that uses them.
+    const definitionId = refs(args[5])[0];
+    if (spatial.spaceQuantitySets.has(definitionId)) spatial.quantityLinks.push([definitionId, refs(args[4])]);
+  } else if (record.type === "IFCRELSPACEBOUNDARY") {
+    const spaceId = refs(args[4])[0];
+    if (spaceId) spatial.boundaryCounts.set(spaceId, (spatial.boundaryCounts.get(spaceId) || 0) + 1);
+  } else if (record.type === "IFCSIUNIT") {
+    spatial.units.set(record.id, {type: String(args[1]).replace(/\./g, ""), prefix: String(args[2]).replace(/[.$]/g, ""), name: String(args[3]).replace(/\./g, "")});
+  } else if (record.type === "IFCUNITASSIGNMENT") {
+    spatial.unitAssignments.set(record.id, refs(args[0]));
+  } else if (record.type === "IFCSPACE") {
+    spatial.spaces.push({
+      id: record.id, globalId: args[0], name: args[2], description: args[3], objectType: args[4],
+      representation: args[6], longName: args[7], predefinedType: args[9],
+    });
+  } else if (record.type === "IFCBUILDINGSTOREY") {
+    spatial.storeys.set(record.id, {id: record.id, globalId: args[0], name: args[2], objectType: args[4], longName: args[7]});
+  } else if (record.type === "IFCSPACETYPE") {
+    spatial.spaceTypeTags.set(record.id, args[7]);
+  } else {
+    const [list, parentSlot, childSlot] = RELATION_SLOTS[record.type];
+    const parentId = refs(args[parentSlot])[0];
+    if (parentId) spatial[list].push([parentId, refs(args[childSlot])]);
+  }
 }
 
 // Streams every complete STEP entity record and hands the parsed record to onRecord.
@@ -172,6 +230,7 @@ export async function loadIfc(file, onProgress = () => {}, fileName = file?.name
   if (!/ISO-10303-21\s*;/i.test(header) || !/\bDATA\s*;/i.test(header)) {
     throw new IfcInputError("The file does not contain a valid IFC STEP header and DATA section.");
   }
+  if (schema !== "IFC4") throw new IfcSchemaError(schema);
   const footer = decoder.decode(await file.slice(Math.max(0, file.size - 1024 * 1024)).arrayBuffer());
   if (!/END-ISO-10303-21\s*;/i.test(footer)) {
     throw new IfcInputError("The IFC footer is missing or truncated.");
@@ -183,9 +242,19 @@ export async function loadIfc(file, onProgress = () => {}, fileName = file?.name
   const typeCandidates = [];
   const emptyShells = new Map();
   const brepOuters = new Map();
+  const spatial = {
+    spaces: [], storeys: new Map(), spaceTypeTags: new Map(), aggregates: [], containment: [], typeLinks: [],
+    quantities: new Map(), spaceQuantitySets: new Map(), quantityLinks: [], boundaryCounts: new Map(), units: new Map(), unitAssignments: new Map(),
+  };
+  const truncatedRelations = [];
 
   await streamRecords(file, record => {
     entities.set(record.id, record.type);
+    if (SPATIAL_TYPES.has(record.type)) {
+      // A relationship longer than the capture limit is read again in full after streaming.
+      if (record.truncated && RELATION_SLOTS[record.type]) truncatedRelations.push({start: record.start, end: record.end});
+      else captureSpatialRecord(spatial, record);
+    }
     if (DETAILED_TYPES.has(record.type)) detailed.set(record.id, compactDetailedRecord(record));
     else if (record.type === "IFCCLOSEDSHELL") {
       if (!record.truncated && record.args.length === 1 && /^\(\s*\)$/.test(record.args[0])) {
@@ -205,8 +274,12 @@ export async function loadIfc(file, onProgress = () => {}, fileName = file?.name
         tag: stepString(record.args[7]), mapIds: codeRefs(record.args[6])});
     }
   }, onProgress, "Reading IFC records");
+  for (const {start, end} of truncatedRelations) {
+    const record = parseCapturedRecord(new Uint8Array(await file.slice(start, end).arrayBuffer()), start, end);
+    if (record) captureSpatialRecord(spatial, record);
+  }
   onProgress({stage: "IFC records loaded", current: file.size, total: file.size, unit: "bytes"});
-  return {file, schema, entities, detailed, productCandidates, typeCandidates, emptyShells, brepOuters};
+  return {file, schema, entities, detailed, productCandidates, typeCandidates, emptyShells, brepOuters, spatial};
 }
 
 // Finds every record that references one of targetIds, with the argument positions of each reference.

@@ -3,21 +3,27 @@ const emptyCounts = () => ({bodySweptSolid: 0, bodyTessellation: 0, footprintCur
 export function combineAnalyses(entries) {
   const counts = emptyCounts();
   const issues = [];
+  const spaceIssues = [];
   const fileErrors = [];
   const schemas = new Set();
+  const blockedSchemas = new Set();
   let representationsScanned = 0;
   let productsScanned = 0;
+  let spacesScanned = 0;
 
   const files = entries.map((entry, fileIndex) => ({
     fileIndex,
     fileName: entry.file.name,
     issueCount: entry.analysis?.issues.length || 0,
+    spaceIssueCount: entry.analysis?.spaces?.issues.length || 0,
     error: entry.error?.message || (entry.error ? String(entry.error) : null),
+    blockedSchema: entry.error?.schema || null,
   }));
 
   entries.forEach((entry, fileIndex) => {
     if (entry.error) {
-      fileErrors.push({fileIndex, fileName: entry.file.name, message: entry.error.message || String(entry.error)});
+      fileErrors.push({fileIndex, fileName: entry.file.name, message: entry.error.message || String(entry.error), blocked: Boolean(entry.error.schema)});
+      if (entry.error.schema) blockedSchemas.add(entry.error.schema);
       return;
     }
     const analysis = entry.analysis;
@@ -26,22 +32,29 @@ export function combineAnalyses(entries) {
     productsScanned += analysis.productsScanned || 0;
     for (const key of Object.keys(counts)) counts[key] += analysis.counts?.[key] || 0;
     for (const issue of analysis.issues) issues.push({...issue, fileIndex, fileName: entry.file.name});
+    spacesScanned += analysis.spaces?.spaceCount || 0;
+    for (const space of analysis.spaces?.issues || []) spaceIssues.push({...space, fileIndex, fileName: entry.file.name});
   });
 
-  const schema = schemas.size === 1 ? [...schemas][0] : schemas.size ? [...schemas].join(" / ") : "—";
+  // Files that are not IFC4 are blocked before reading, but their schema is still shown.
+  const allSchemas = new Set([...schemas, ...blockedSchemas]);
+  const schema = allSchemas.size ? [...allSchemas].join(" / ") : "—";
   return {
     schema,
+    blockedSchemas: [...blockedSchemas],
     filesScanned: entries.length,
     successfulFiles: entries.length - fileErrors.length,
     files,
     fileErrors,
     issues,
+    spaceIssues,
+    spacesScanned,
     counts,
     representationsScanned,
     productsScanned,
     repairable: issues.filter(issue => issue.repairable).length,
     reviewOnly: issues.filter(issue => !issue.repairable).length,
-    unsupportedMessage: issues.length || fileErrors.length ? null : "No supported missing contexts or empty IfcClosedShell geometry were detected.",
+    unsupportedMessage: issues.length || spaceIssues.length || fileErrors.length ? null : "No supported missing contexts or empty IfcClosedShell geometry were detected.",
   };
 }
 

@@ -104,7 +104,11 @@ function endRecord(entryCount, centralSize, centralOffset) {
 export async function createRepairedZip(entries, onProgress = () => {}) {
   if (!entries.length) throw new Error("No repaired IFC files are available for the ZIP archive.");
   if (entries.length > 0xffff) throw new Error("The ZIP archive supports up to 65,535 repaired IFC files.");
-  const namedEntries = uniqueNames(entries);
+  return storedZip(uniqueNames(entries), onProgress);
+}
+
+// Writes entries uncompressed (STORE). Names are used as given, so they may contain folders.
+export async function storedZip(namedEntries, onProgress = () => {}, type = "application/zip") {
   const totalBytes = namedEntries.reduce((sum, entry) => sum + entry.blob.size, 0);
   let bytesRead = 0;
   let offset = 0;
@@ -137,7 +141,7 @@ export async function createRepairedZip(entries, onProgress = () => {}) {
   const centralSize = offset - centralOffset;
   if (offset + 22 > UINT32_MAX) throw new Error("The repaired files exceed the 4 GB ZIP archive limit.");
   parts.push(endRecord(records.length, centralSize, centralOffset));
-  return new Blob(parts, {type: "application/zip"});
+  return new Blob(parts, {type});
 }
 
 export function repairedArchiveName() {

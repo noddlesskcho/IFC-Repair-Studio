@@ -6,7 +6,7 @@ import {fileURLToPath} from "node:url";
 import {analyzeIfc} from "../../js/ifc-analyzer.js";
 import {combineAnalyses, paginateIssues, RESULTS_PAGE_SIZE, selectedIssuesForFile} from "../../js/ifc-batch.js";
 import {applyRepairs, verifyRepairedModel, verifyRepairs} from "../../js/ifc-fixer.js";
-import {loadIfc, splitStepArguments} from "../../js/ifc-loader.js";
+import {IfcSchemaError, loadIfc, splitStepArguments} from "../../js/ifc-loader.js";
 import {downloadBlob, repairedFileName} from "../../js/ifc-exporter.js";
 import {createRepairedZip, repairedArchiveName} from "../../js/zip-exporter.js";
 
@@ -70,14 +70,21 @@ test("browser pipeline repairs direct Body and FootPrint representations", async
   assert.deepEqual(new Uint8Array(await source.arrayBuffer()), original, "source IFC must remain unchanged");
 });
 
-test("unsupported schema is audited without repair proposals", async () => {
+test("a file that is not IFC4 is blocked before its records are read", async () => {
   const source = await fixtureFile();
-  const text = (await source.text()).replace("FILE_SCHEMA(('IFC4'))", "FILE_SCHEMA(('IFC2X3'))");
-  const blob = new Blob([text]);
-  Object.defineProperty(blob, "name", {value: "unsupported.ifc"});
-  const analysis = await analyzeIfc(await loadIfc(blob));
-  assert.equal(analysis.schema, "IFC2X3");
-  assert.equal(analysis.issues.length, 0);
+  for (const schema of ["IFC2X3", "IFC4X3_ADD2"]) {
+    const text = (await source.text()).replace("FILE_SCHEMA(('IFC4'))", `FILE_SCHEMA(('${schema}'))`);
+    const blob = new Blob([text]);
+    Object.defineProperty(blob, "name", {value: "unsupported.ifc"});
+    let streamed = false;
+    await assert.rejects(loadIfc(blob, () => { streamed = true; }), error => {
+      assert.ok(error instanceof IfcSchemaError);
+      assert.equal(error.schema, schema);
+      assert.match(error.message, new RegExp(`CORENET X does not support ${schema}`));
+      return true;
+    });
+    assert.equal(streamed, false);
+  }
 });
 
 test("download exporter uses a local Blob URL and repaired filename", () => {

@@ -1,4 +1,4 @@
-import {paginateIssues, RESULTS_PAGE_SIZE} from "./ifc-batch.js?v=2.0";
+import {paginateIssues, RESULTS_PAGE_SIZE} from "./ifc-batch.js?v=2.1";
 
 const byId = id => document.getElementById(id);
 
@@ -22,6 +22,16 @@ export const elements = {
   contextPage: byId("context-page"),
   contextPrevious: byId("context-previous"),
   contextNext: byId("context-next"),
+  spacePanel: byId("space-panel"),
+  spaceSummary: byId("space-summary"),
+  spaceBody: byId("space-body"),
+  spacePage: byId("space-page"),
+  spacePrevious: byId("space-previous"),
+  spaceNext: byId("space-next"),
+  reportBar: byId("report-bar"),
+  reportSummary: byId("report-summary"),
+  reportButton: byId("report-button"),
+  completionReportNote: byId("completion-report-note"),
   input: byId("file-input"),
   choose: byId("choose-button"),
   changeFile: byId("change-file-button"),
@@ -38,6 +48,10 @@ export const elements = {
   repairable: byId("repairable-count"),
   review: byId("review-count"),
   schema: byId("schema-value"),
+  schemaMetric: byId("schema-metric"),
+  schemaNote: byId("schema-note"),
+  spaceMetric: byId("space-metric"),
+  spaceCount: byId("space-count"),
   signatureSummary: byId("signature-summary"),
   repairFileSummary: byId("repair-file-summary"),
   repair: byId("repair-button"),
@@ -116,6 +130,7 @@ const isShell = issue => issue.issueType === "emptyClosedShell";
 const views = {
   shell: {page: 1, match: isShell},
   context: {page: 1, match: issue => !isShell(issue)},
+  space: {page: 1, source: analysis => analysis.spaceIssues},
 };
 
 function populateFileFilter(analysis) {
@@ -128,8 +143,8 @@ function populateFileFilter(analysis) {
     const option = document.createElement("option");
     option.value = String(file.fileIndex);
     option.textContent = file.error
-      ? `${file.fileName} (file could not be checked)`
-      : `${file.fileName} (${file.issueCount.toLocaleString()} issue${file.issueCount === 1 ? "" : "s"})`;
+      ? `${file.fileName} (${file.blockedSchema ? `blocked: ${file.blockedSchema}, not IFC4` : "file could not be checked"})`
+      : `${file.fileName} (${(file.issueCount + file.spaceIssueCount).toLocaleString()} issue${file.issueCount + file.spaceIssueCount === 1 ? "" : "s"})`;
     elements.fileFilter.append(option);
   }
   elements.fileFilter.value = resultsView.fileIndex;
@@ -173,13 +188,30 @@ const TABLES = {
       cell(row, viewLabel(issue));
     },
   },
+  space: {
+    body: () => elements.spaceBody, page: () => elements.spacePage,
+    previous: () => elements.spacePrevious, next: () => elements.spaceNext,
+    row: (row, space) => {
+      cell(row, space.number, "strong");
+      cell(row, space.name);
+      cell(row, space.level);
+      cell(row, space.revitId, "mono strong");
+      const why = cell(row, space.reasonLabel);
+      why.title = space.reasonDetail;
+      const detail = document.createElement("small");
+      detail.textContent = `Area ${space.area} · Height ${space.height}`;
+      why.append(detail);
+      cell(row, space.guid, "mono");
+    },
+  },
 };
 
 function renderTable(key) {
   const analysis = resultsView.analysis;
   if (!analysis) return;
   const view = views[key], table = TABLES[key];
-  const page = paginateIssues(analysis.issues.filter(view.match), resultsView.fileIndex, view.page, RESULTS_PAGE_SIZE);
+  const items = view.source ? view.source(analysis) : analysis.issues.filter(view.match);
+  const page = paginateIssues(items, resultsView.fileIndex, view.page, RESULTS_PAGE_SIZE);
   view.page = page.currentPage;
   table.body().replaceChildren();
   for (const issue of page.items) {
@@ -189,7 +221,7 @@ function renderTable(key) {
   }
   if (!page.totalItems) {
     const row = document.createElement("tr");
-    cell(row, "No issues of this kind in the selected file.").colSpan = 4;
+    cell(row, "No issues of this kind in the selected file.").colSpan = table.body().closest("table").tHead.rows[0].cells.length;
     table.body().append(row);
   }
   table.page().textContent = `Page ${page.currentPage.toLocaleString()} of ${page.totalPages.toLocaleString()} · ${page.totalItems.toLocaleString()} item${page.totalItems === 1 ? "" : "s"}`;
@@ -203,6 +235,7 @@ function renderBreakdown(analysis) {
     ["Empty IfcClosedShell", counts.emptyClosedShell || 0, "shell"],
     ["Body context missing", (counts.bodySweptSolid || 0) + (counts.bodyTessellation || 0), ""],
     ["FootPrint context missing", counts.footprintCurve2D || 0, ""],
+    ["Area without geometry (report only)", analysis.spaceIssues.length, "shell"],
   ];
   elements.breakdown.replaceChildren(...rows.map(([label, count, className]) => {
     const item = document.createElement("li");
@@ -230,25 +263,30 @@ function renderPanels(analysis, changedAnalysis) {
   const contextIssues = analysis.issues.filter(issue => !isShell(issue));
   elements.shellPanel.classList.toggle("hidden", !shellIssues.length);
   elements.contextPanel.classList.toggle("hidden", !contextIssues.length);
-  elements.fileFilterRow.classList.toggle("hidden", analysis.files.length < 2 || !analysis.issues.length);
+  elements.spacePanel.classList.toggle("hidden", !analysis.spaceIssues.length);
+  elements.fileFilterRow.classList.toggle("hidden", analysis.files.length < 2 || !(analysis.issues.length || analysis.spaceIssues.length));
   if (changedAnalysis) {
     elements.shellPanel.open = false;
     elements.contextPanel.open = false;
-    views.shell.page = 1;
-    views.context.page = 1;
+    elements.spacePanel.open = false;
+    for (const view of Object.values(views)) view.page = 1;
   }
   elements.shellSummary.textContent = panelSummary(shellIssues,
     count => `${count.toLocaleString()} will have their empty shapes deleted, please check them first`);
   elements.contextSummary.textContent = panelSummary(contextIssues,
     count => `${count.toLocaleString()} will get the missing link (nothing deleted)`);
+  const spaceCount = analysis.spaceIssues.length;
+  const areas = count => `${count.toLocaleString()} area${count === 1 ? "" : "s"}`;
+  elements.spaceSummary.textContent = `${spaceCount.toLocaleString()} of ${analysis.spacesScanned.toLocaleString()} IfcSpace${analysis.spacesScanned === 1 ? "" : "s"} ${spaceCount === 1 ? "has" : "have"} no shape. Report only: fix them in Revit.`;
+  elements.reportBar.classList.toggle("hidden", !spaceCount);
+  elements.reportSummary.textContent = `${areas(spaceCount)} without geometry, with the reason, the Revit Lookup ID and how to fix each one. The repaired ZIP also includes this report.`;
   elements.fileErrors.classList.toggle("hidden", !analysis.fileErrors.length);
   elements.fileErrors.replaceChildren(...analysis.fileErrors.map(fileError => {
     const item = document.createElement("li");
     item.textContent = `${fileError.fileName}: ${fileError.message}`;
     return item;
   }));
-  renderTable("shell");
-  renderTable("context");
+  for (const key of Object.keys(TABLES)) renderTable(key);
 }
 
 export function renderResults(analysis) {
@@ -261,21 +299,35 @@ export function renderResults(analysis) {
   elements.progressCard.classList.add("hidden");
   elements.results.classList.remove("hidden");
   elements.completion.classList.add("hidden");
-  elements.issues.textContent = analysis.issues.length.toLocaleString();
+  elements.issues.textContent = (analysis.issues.length + analysis.spaceIssues.length).toLocaleString();
   elements.repairable.textContent = analysis.repairable.toLocaleString();
-  elements.review.textContent = (analysis.reviewOnly + analysis.fileErrors.length).toLocaleString();
+  // Blocked non-IFC4 files are shown in the red schema box, not counted again here.
+  const unreadable = analysis.fileErrors.filter(fileError => !fileError.blocked).length;
+  elements.review.textContent = (analysis.reviewOnly + unreadable).toLocaleString();
+  elements.spaceMetric.classList.toggle("hidden", !analysis.spaceIssues.length);
+  elements.spaceCount.textContent = analysis.spaceIssues.length.toLocaleString();
   elements.schema.textContent = analysis.schema;
+  const blocked = analysis.blockedSchemas || [];
+  elements.schemaMetric.classList.toggle("blocked", blocked.length > 0);
+  elements.schemaNote.classList.toggle("hidden", !blocked.length);
+  elements.schemaNote.textContent = blocked.length
+    ? `CORENET X does not support ${blocked.join(" or ")}. Only IFC4 files are accepted. Export the model from Revit again as IFC4 with the IFC+SG settings.`
+    : "";
   elements.signatureSummary.textContent = analysis.issues.length || analysis.fileErrors.length
     ? `Files checked: ${analysis.successfulFiles.toLocaleString()} of ${analysis.filesScanned.toLocaleString()}.`
-    : "No supported missing contexts or empty IfcClosedShell geometry were detected. There is nothing to repair.";
+    : analysis.spaceIssues.length
+      ? "No missing contexts or empty IfcClosedShell geometry were detected, so there is nothing to repair. Some areas have no geometry: download the areas report and fix them in Revit."
+      : "No supported missing contexts, empty IfcClosedShell geometry or areas without geometry were detected. There is nothing to repair.";
   const repairFileIndexes = new Set(analysis.issues.filter(issue => issue.repairable).map(issue => issue.fileIndex));
-  const cleanFiles = analysis.files.filter(file => !file.error && file.issueCount === 0).length;
-  const manualOnlyFiles = analysis.files.filter(file => !file.error && file.issueCount > 0 &&
+  const cleanFiles = analysis.files.filter(file => !file.error && file.issueCount + file.spaceIssueCount === 0).length;
+  const manualOnlyFiles = analysis.files.filter(file => !file.error && file.issueCount + file.spaceIssueCount > 0 &&
     !repairFileIndexes.has(file.fileIndex)).length;
   const fileClauses = [`${repairFileIndexes.size.toLocaleString()} of ${analysis.successfulFiles.toLocaleString()} checked file${analysis.successfulFiles === 1 ? "" : "s"} will be repaired automatically`];
   if (cleanFiles) fileClauses.push(`${cleanFiles.toLocaleString()} need no repair`);
-  if (manualOnlyFiles) fileClauses.push(`${manualOnlyFiles.toLocaleString()} require manual review only`);
-  if (analysis.fileErrors.length) fileClauses.push(`${analysis.fileErrors.length.toLocaleString()} could not be checked`);
+  if (manualOnlyFiles) fileClauses.push(`${manualOnlyFiles.toLocaleString()} need fixes in Revit only`);
+  const blockedFiles = analysis.fileErrors.length - unreadable;
+  if (blockedFiles) fileClauses.push(`${blockedFiles.toLocaleString()} blocked because ${blockedFiles === 1 ? "it is" : "they are"} not IFC4`);
+  if (unreadable) fileClauses.push(`${unreadable.toLocaleString()} could not be checked`);
   elements.repairFileSummary.textContent = `${fileClauses.join(" · ")}.`;
   renderBreakdown(analysis);
   renderPanels(analysis, changedAnalysis);
@@ -317,7 +369,7 @@ async function animateDownloadHandoff(bytes = 0) {
   }
 }
 
-export function showCompletion(result, packageInfo, onDownload) {
+export function showCompletion(result, packageInfo, onDownload, onReport = null) {
   elements.progressCard.classList.add("hidden");
   elements.results.classList.add("hidden");
   elements.completion.classList.remove("hidden");
@@ -374,6 +426,15 @@ export function showCompletion(result, packageInfo, onDownload) {
     }
   });
   elements.downloadList.append(button);
+  elements.completionReportNote.classList.toggle("hidden", !onReport);
+  if (onReport) {
+    const reportButton = document.createElement("button");
+    reportButton.type = "button";
+    reportButton.className = "button";
+    reportButton.textContent = "Download areas report only";
+    reportButton.addEventListener("click", onReport);
+    elements.downloadList.append(reportButton);
+  }
   setStep(3);
 }
 
@@ -400,8 +461,15 @@ export function resetUi() {
   elements.downloadProgressPanel.classList.add("hidden");
   elements.shellPanel.classList.add("hidden");
   elements.contextPanel.classList.add("hidden");
+  elements.spacePanel.classList.add("hidden");
+  elements.reportBar.classList.add("hidden");
+  elements.spaceMetric.classList.add("hidden");
+  elements.schemaMetric.classList.remove("blocked");
+  elements.schemaNote.classList.add("hidden");
   elements.shellPanel.open = false;
   elements.contextPanel.open = false;
+  elements.spacePanel.open = false;
+  elements.spaceBody.replaceChildren();
   elements.shellBody.replaceChildren();
   elements.contextBody.replaceChildren();
   elements.breakdown.replaceChildren();
@@ -415,8 +483,8 @@ for (const key of Object.keys(TABLES)) {
 }
 elements.fileFilter.addEventListener("change", () => {
   resultsView.fileIndex = elements.fileFilter.value;
-  views.shell.page = 1;
-  views.context.page = 1;
-  renderTable("shell");
-  renderTable("context");
+  for (const key of Object.keys(TABLES)) {
+    views[key].page = 1;
+    renderTable(key);
+  }
 });

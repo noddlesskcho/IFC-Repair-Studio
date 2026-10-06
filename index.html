@@ -8,14 +8,14 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>IFC+SG Repair Tool</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23175cd3'/%3E%3Cpath d='M18 20h28v7H25v7h17v7H25v11h-7z' fill='white'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="./css/app.css?v=2.0">
+  <link rel="stylesheet" href="./css/app.css?v=2.1">
 </head>
 <body>
   <header class="site-header">
     <div>
       <p class="eyebrow">REVIT 2025 / 2026 IFC+SG &middot; IFC4 GEOMETRY REPAIR &middot; CORENET X PRE-SUBMISSION</p>
       <h1>IFC+SG Repair Tool</h1>
-      <p class="subtitle">Checks IFC+SG files exported from Autodesk Revit 2025 and 2026 and repairs two known export problems: shapes missing their geometry context (<code>IfcShapeRepresentation.ContextOfItems</code>) and empty 3D shapes with no surfaces (<code>IfcClosedShell</code>). Either problem can make the IFC schema check or model processing fail in the CORENET X Submission Portal.</p>
+      <p class="subtitle">Checks IFC+SG files exported from Autodesk Revit 2025 and 2026 and repairs two known export problems: shapes missing their geometry context (<code>IfcShapeRepresentation.ContextOfItems</code>) and empty 3D shapes with no surfaces (<code>IfcClosedShell</code>). Either problem can make the IFC schema check or model processing fail in the CORENET X Submission Portal. It also finds areas exported without geometry (<code>IfcSpace</code>), explains why, and lists them in an Excel report with Revit IDs so you can fix them in Revit. Only IFC4 files are accepted.</p>
     </div>
     <span class="privacy-badge"><span>Your IFC file is processed locally.</span><span>It is not uploaded or stored.</span></span>
   </header>
@@ -59,7 +59,8 @@
         </article>
         <article class="metric"><strong id="repairable-count">0</strong><span>Ready to repair</span></article>
         <article class="metric amber"><strong id="review-count">0</strong><span>Unable to repair automatically</span></article>
-        <article class="metric"><strong id="schema-value">-</strong><span>IFC schema</span></article>
+        <article id="space-metric" class="metric amber hidden"><strong id="space-count">0</strong><span>Areas without geometry: fix in Revit (report only)</span></article>
+        <article id="schema-metric" class="metric"><strong id="schema-value">-</strong><span>IFC schema</span><p id="schema-note" class="schema-note hidden"></p></article>
       </div>
 
       <section class="card">
@@ -124,6 +125,38 @@
             </nav>
           </div>
         </details>
+        <details id="space-panel" class="issue-panel space hidden">
+          <summary>
+            <span class="panel-heading">
+              <span class="panel-title">Areas without geometry (IfcSpace): fix these in Revit</span>
+              <span id="space-summary" class="panel-sub"></span>
+            </span>
+            <span class="expand-cue" aria-hidden="true"></span>
+          </summary>
+          <div class="panel-body">
+            <div class="panel-explain space">
+              <p><b>What is wrong</b>These <code>IfcSpace</code> objects (Revit rooms, spaces and areas) were exported with no shape at all (<code>Representation = $</code>).</p>
+              <p><b>Why they have no geometry</b>The <strong>Why no geometry</strong> column reads the area and height that Revit exported for each space. <em>Has area, but Revit could not build the 3D shape</em> means the room is placed and enclosed, but its boundary could not be turned into a 3D shape, usually because of very short or overlapping boundary lines, thin slivers or narrow gaps. <em>Area is 0</em> means it is not enclosed or is redundant.</p>
+              <p><b>Why the tool does not change them</b>The IFC file has no correct outline for these spaces, so there is no shape to add. They stay unchanged in the repaired IFC. This is a report only.</p>
+              <p><b>What you should do</b>Download the areas report. For each row, find the room or area in Revit with <strong>Manage &rsaquo; Select by ID</strong> and its Revit Lookup ID, and fix it as the report says. Then export the IFC again.</p>
+            </div>
+            <div class="table-wrap">
+              <table class="issue-table">
+                <thead><tr><th>Number</th><th>Name</th><th>Level</th><th>Revit Lookup ID</th><th>Why no geometry</th><th>GUID</th></tr></thead>
+                <tbody id="space-body"></tbody>
+              </table>
+            </div>
+            <nav class="pagination" aria-label="Areas without geometry pages">
+              <button id="space-previous" class="button" type="button">Previous</button>
+              <span id="space-page">Page 1 of 1</span>
+              <button id="space-next" class="button" type="button">Next</button>
+            </nav>
+          </div>
+        </details>
+        <div id="report-bar" class="report-bar hidden">
+          <div><strong>Areas without geometry report (Excel)</strong><span id="report-summary" class="muted"></span></div>
+          <button id="report-button" class="button" type="button">Download areas report</button>
+        </div>
         <div class="actions">
           <button id="check-another" class="button" type="button">Check another IFC</button>
           <button id="repair-button" class="button primary" type="button">Repair all files</button>
@@ -140,6 +173,7 @@
         <li>Only the planned edits were made: missing <code>IfcShapeRepresentation.ContextOfItems</code> values were filled, and empty <code>IfcClosedShell</code> geometry was removed together with the references to it.</li>
         <li>No element was deleted. An element whose only geometry was empty keeps its data with <code>Representation = $</code>.</li>
         <li>The original IFC remains unchanged.</li>
+        <li id="completion-report-note" class="hidden">The ZIP also contains the Areas without geometry report (Excel). It lists each area with no shape, why it has none, and how to fix it in Revit.</li>
         <li>No file was uploaded or transmitted by this application.</li>
       </ul>
       <div id="download-progress-panel" class="download-progress-panel hidden" aria-live="polite">
@@ -163,11 +197,11 @@
   </main>
 
   <footer>
-    <p><strong>Browser repair scope:</strong> IFC4 Body/SweptSolid, Body/Tessellation, and FootPrint/Curve2D missing-context repairs when exactly one compatible project-connected context is available, and removal of empty <code>IfcClosedShell</code> geometry reached through <code>IfcFacetedBrep</code>.</p>
+    <p><strong>Browser repair scope:</strong> IFC4 Body/SweptSolid, Body/Tessellation, and FootPrint/Curve2D missing-context repairs when exactly one compatible project-connected context is available, and removal of empty <code>IfcClosedShell</code> geometry reached through <code>IfcFacetedBrep</code>. Report only (no repair): <code>IfcSpace</code> with <code>Representation = $</code>.</p>
     <p>This tool is not a complete IFC validator or CORENET X compliance checker.</p>
-    <p class="version">Version 2.0 &middot; 6 Oct 2026</p>
+    <p class="version">Version 2.1 &middot; 6 Oct 2026</p>
   </footer>
-  <script type="module" src="./js/app.js?v=2.0"></script>
+  <script type="module" src="./js/app.js?v=2.1"></script>
 </body>
 </html>
 

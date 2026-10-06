@@ -1,13 +1,14 @@
-import {analyzeIfc} from "./ifc-analyzer.js?v=2.0";
-import {combineAnalyses, selectedIssuesForFile} from "./ifc-batch.js?v=2.0";
-import {downloadBlob, repairedFileName} from "./ifc-exporter.js?v=2.0";
-import {applyRepairs, verifyNoDanglingReferences, verifyRepairedModel, verifyRepairs} from "./ifc-fixer.js?v=2.0";
-import {loadIfc} from "./ifc-loader.js?v=2.0";
-import {createRepairedZip, repairedArchiveName} from "./zip-exporter.js?v=2.0";
+import {analyzeIfc} from "./ifc-analyzer.js?v=2.1";
+import {combineAnalyses, selectedIssuesForFile} from "./ifc-batch.js?v=2.1";
+import {downloadBlob, repairedFileName} from "./ifc-exporter.js?v=2.1";
+import {applyRepairs, verifyNoDanglingReferences, verifyRepairedModel, verifyRepairs} from "./ifc-fixer.js?v=2.1";
+import {loadIfc} from "./ifc-loader.js?v=2.1";
+import {areaReportName, buildAreaReport} from "./area-report.js?v=2.1";
+import {createRepairedZip, repairedArchiveName} from "./zip-exporter.js?v=2.1";
 import {
   elements, renderResults, repairAllowed, resetUi, setStep, showCompletion, showError, showFiles,
   updateProgress, updateRepairButton,
-} from "./ui.js?v=2.0";
+} from "./ui.js?v=2.1";
 
 const state = {entries: [], analysis: null, outputs: [], archive: null, busy: false};
 
@@ -16,6 +17,14 @@ function setBusy(value) {
   elements.choose.disabled = value;
   elements.changeFile.disabled = value;
   elements.repair.disabled = value || !repairAllowed(state.analysis);
+  elements.reportButton.disabled = value;
+}
+
+const hasReport = () => Boolean(state.analysis?.spaceIssues.length);
+
+async function downloadReport() {
+  if (!hasReport()) return;
+  downloadBlob(await buildAreaReport(state.analysis), areaReportName(state.analysis));
 }
 
 function progressForFile(index, total, fileName, activity = "") {
@@ -100,8 +109,9 @@ async function repairSelected() {
       state.outputs.push({blob: output, name: outputName, result});
     }
     const outputCount = state.outputs.length;
-    const cleanFiles = state.entries.filter(entry => !entry.error && entry.analysis.issues.length === 0).length;
-    const manualOnlyFiles = state.entries.filter(entry => !entry.error && entry.analysis.issues.length > 0 &&
+    const issueCount = entry => entry.analysis.issues.length + (entry.analysis.spaces?.issues.length || 0);
+    const cleanFiles = state.entries.filter(entry => !entry.error && issueCount(entry) === 0).length;
+    const manualOnlyFiles = state.entries.filter(entry => !entry.error && issueCount(entry) > 0 &&
       !entry.analysis.issues.some(issue => issue.repairable)).length;
     showCompletion(summary, {
       outputCount,
@@ -110,10 +120,13 @@ async function repairSelected() {
       fileErrors: state.analysis.fileErrors.length,
     }, async reportProgress => {
       state.archive = null;
-      state.archive = await createRepairedZip(state.outputs, reportProgress);
+      const report = hasReport()
+        ? [{blob: await buildAreaReport(state.analysis), name: areaReportName(state.analysis)}]
+        : [];
+      state.archive = await createRepairedZip([...state.outputs, ...report], reportProgress);
       downloadBlob(state.archive, repairedArchiveName());
       return {bytes: state.archive.size};
-    });
+    }, hasReport() ? downloadReport : null);
   } catch (error) {
     state.outputs = [];
     state.archive = null;
@@ -155,6 +168,7 @@ for (const name of ["dragleave", "drop"]) {
 }
 elements.drop.addEventListener("drop", event => processFiles(event.dataTransfer.files));
 elements.repair.addEventListener("click", repairSelected);
+elements.reportButton.addEventListener("click", () => downloadReport().catch(showError));
 for (const button of [elements.checkAnother, elements.restart, elements.errorRestart]) {
   button.addEventListener("click", restart);
 }
