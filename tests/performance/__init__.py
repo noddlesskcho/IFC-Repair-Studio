@@ -1,1 +1,0 @@
-"""Performance smoke tests."""

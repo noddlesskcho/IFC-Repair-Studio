@@ -1,12 +1,5 @@
-# Python
-__pycache__/
-*.py[cod]
-*.egg-info/
-.pytest_cache/
-.coverage
-htmlcov/
-.venv/
-venv/
+# Node
+node_modules/
 
 # IFC models and repair outputs
 *.ifc
@@ -19,12 +12,8 @@ tmp/
 work/
 validation-output/
 
-# Packaging artifacts
-build/
-dist/
+# Build output and repaired ZIP downloads
 web-dist/
-*.exe
-*.msi
 *.zip
 
 # Logs and local diagnostics

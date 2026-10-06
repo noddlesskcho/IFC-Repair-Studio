@@ -20,11 +20,10 @@ No installation or production backend is required. From the repository root,
 serve the files with any static server:
 
 ```powershell
-python -m http.server 8000
+npx serve .
 ```
 
-Then open `http://localhost:8000/`. Python is only acting as a local static file
-server here; it is not used by the web application.
+Then open the URL that the server prints. Any other static file server also works.
 
 If Node.js 20 or newer is available, the browser regression tests and static
 build can be run with:
@@ -40,13 +39,11 @@ npm run build
 npm run build
 ```
 
-This creates `web-dist/`. The separate name is intentional: this repository's
-existing `dist/` directory is reserved for Windows/PyInstaller releases.
-`web-dist/` contains only deployable static files and can be served by any basic
-HTTP server.
+This creates `web-dist/`, which contains only deployable static files and can be
+served by any basic HTTP server.
 
 Node.js is a development/build tool only. The production site does not require
-Node.js, Python, Flask, FastAPI, Express, or any server-side application.
+Node.js or any server-side application.
 
 ## Deploy to GitHub Pages
 
@@ -123,8 +120,7 @@ Safari with support for JavaScript modules, `Blob`, `File.stream()`,
 `TextDecoder`, and `URL.createObjectURL`.
 
 Large-file processing is streaming-first, but browser memory and Blob limits
-vary by browser and operating system. The desktop application remains the
-recommended option for very large models and full semantic validation.
+vary by browser and operating system.
 
 ## Privacy
 
