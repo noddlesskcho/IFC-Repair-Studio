@@ -21,7 +21,28 @@ export class IfcSchemaError extends IfcInputError {
   }
 }
 
+// Replaces /* */ comments outside quoted strings with a space.
+function stripStepComments(value) {
+  let result = "", start = 0, quoted = false;
+  for (let i = 0; i < value.length; i += 1) {
+    const c = value[i];
+    if (quoted) {
+      if (c === "'" && value[i + 1] === "'") i += 1;
+      else if (c === "'") quoted = false;
+    } else if (c === "'") quoted = true;
+    else if (c === "/" && value[i + 1] === "*") {
+      const end = value.indexOf("*/", i + 2);
+      result += value.slice(start, i) + " ";
+      start = i = end < 0 ? value.length : end + 2;
+      i -= 1;
+    }
+  }
+  return result + value.slice(start);
+}
+
+// Top-level arguments of a STEP record, with comments removed so each argument holds only its value.
 export function splitStepArguments(value) {
+  if (value.includes("/*")) value = stripStepComments(value);
   const result = [];
   let start = 0, depth = 0, quoted = false, comment = false;
   for (let i = 0; i < value.length; i += 1) {
@@ -64,10 +85,17 @@ function parseCapturedRecord(bytes, start, end, truncated = false) {
   const open = text.indexOf("(", prefix.index + prefix[0].length - 1);
   const close = text.lastIndexOf(")");
   const args = close > open ? splitStepArguments(text.slice(open + 1, close)) : [];
+  // The first attribute token and its offsets; whitespace and /* */ comments around it are skipped.
   let firstStart = open + 1;
-  while (/\s/.test(text[firstStart] || "")) firstStart += 1;
+  while (true) {
+    while (/\s/.test(text[firstStart] || "")) firstStart += 1;
+    if (!text.startsWith("/*", firstStart)) break;
+    const commentEnd = text.indexOf("*/", firstStart + 2);
+    if (commentEnd < 0) break;
+    firstStart = commentEnd + 2;
+  }
   let firstEnd = firstStart;
-  while (firstEnd < text.length && !/[\s,]/.test(text[firstEnd])) firstEnd += 1;
+  while (firstEnd < text.length && !/[\s,]/.test(text[firstEnd]) && !text.startsWith("/*", firstEnd)) firstEnd += 1;
   return {
     id: Number(prefix[1]), type: prefix[2].toUpperCase(), args, start, end, truncated,
     firstToken: text.slice(firstStart, firstEnd),
@@ -196,8 +224,10 @@ async function streamRecords(file, onRecord, onProgress, stage, CAPTURE_LIMIT = 
         }
         if (byte === 35 && !lineHasContent) { // # at the first non-whitespace position
           inRecord = true; recordStart = absolute + i; recordLength = 0;
-        } else if (byte === 10 || byte === 13) lineHasContent = false;
-        else if (byte === 39) { outerQuoted = true; lineHasContent = true; }
+        } else if (byte === 10 || byte === 13 || byte === 59) {
+          // A new line or the end of a statement such as DATA; lets an entity start, as in DATA;#1=...
+          lineHasContent = false;
+        } else if (byte === 39) { outerQuoted = true; lineHasContent = true; }
         else if (byte !== 32 && byte !== 9 && byte !== 47) lineHasContent = true;
       }
       if (inRecord) {

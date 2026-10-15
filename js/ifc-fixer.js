@@ -1,4 +1,4 @@
-import {scanReferences} from "./ifc-loader.js?v=2.1";
+import {scanReferences} from "./ifc-loader.js?v=2.2";
 
 const encoder = new TextEncoder();
 // windows-1252 decodes one byte to one character, so text offsets equal byte offsets.
@@ -64,9 +64,22 @@ function argumentSpans(text) {
   throw new IfcRepairError("A planned record could not be parsed.");
 }
 
+// Narrows an argument span to its value, skipping whitespace and /* */ comments at either end.
 function trimSpan(text, [start, end]) {
-  while (start < end && /\s/.test(text[start])) start += 1;
-  while (end > start && /\s/.test(text[end - 1])) end -= 1;
+  while (true) {
+    while (start < end && /\s/.test(text[start])) start += 1;
+    if (!text.startsWith("/*", start)) break;
+    const commentEnd = text.indexOf("*/", start + 2);
+    if (commentEnd < 0 || commentEnd + 2 > end) break;
+    start = commentEnd + 2;
+  }
+  while (true) {
+    while (end > start && /\s/.test(text[end - 1])) end -= 1;
+    if (end - start < 4 || text.slice(end - 2, end) !== "*/") break;
+    const commentStart = text.lastIndexOf("/*", end - 3);
+    if (commentStart < start) break;
+    end = commentStart;
+  }
   return [start, end];
 }
 
@@ -103,7 +116,8 @@ async function materializeShellPlan(file, plan) {
       replacement = "$";
     } else if (op.kind === "removeRefs") {
       const inner = value.match(/^\((.*)\)$/s)?.[1];
-      const items = inner?.split(",").map(item => item.trim());
+      // Comments between the list items are dropped; the rewritten list keeps only references.
+      const items = inner?.replace(/\/\*[\s\S]*?\*\//g, " ").split(",").map(item => item.trim());
       if (!items || items.some(item => !/^#\d+$/.test(item))) throw new IfcRepairError(`Record #${op.id} does not hold a plain reference list.`);
       const remove = new Set(op.removeIds.map(id => `#${id}`));
       const kept = items.filter(item => !remove.has(item));
