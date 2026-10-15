@@ -91,3 +91,7 @@ footer .version{margin-top:10px;font-weight:700;font-variant-numeric:tabular-num
 .privacy-badge span:first-child{position:relative;padding-left:16px;color:var(--ink);font-weight:700}
 .privacy-badge span:first-child::before{content:"";position:absolute;left:0;top:.45em;width:8px;height:8px;border-radius:50%;background:var(--green)}
 .privacy-badge .keep-open{margin-top:8px;padding-top:8px;border-top:1px solid var(--line);color:var(--ink)}
+/* Shown only while the tab is working: sticky, so it stays visible while scrolling. */
+.working-banner{position:sticky;top:0;z-index:20;display:flex;flex-wrap:wrap;gap:4px 12px;align-items:baseline;justify-content:center;padding:10px 24px;background:var(--amberbg);border-bottom:1px solid #fedf89;color:#7a2e0e;font-size:14px;line-height:1.5;text-align:center}
+.working-banner strong{color:var(--amber)}
+.privacy-badge .keep-open{color:var(--amber);font-weight:700}

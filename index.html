@@ -8,7 +8,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>IFC+SG Repair Tool</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23175cd3'/%3E%3Cpath d='M18 20h28v7H25v7h17v7H25v11h-7z' fill='white'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="./css/app.css?v=2.4">
+  <link rel="stylesheet" href="./css/app.css?v=2.5">
 </head>
 <body>
   <header class="site-header">
@@ -28,6 +28,11 @@
     </div>
     <span class="privacy-badge"><span>Processed locally in this browser</span><span>Your IFC files are not uploaded or stored.</span><span class="keep-open">Keep this tab open and in front until it finishes.</span></span>
   </header>
+
+  <div id="working-banner" class="working-banner hidden" role="status">
+    <strong>Working&hellip; keep this tab open and in front until it finishes.</strong>
+    <span>Everything runs in this tab. Closing or reloading it stops the work; switching to another tab slows it down.</span>
+  </div>
 
   <main>
     <section class="workflow" aria-label="Workflow">
@@ -208,9 +213,9 @@
 
   <footer>
     <p>This tool is not a complete IFC validator or CORENET X compliance checker.</p>
-    <p class="version">Version 2.4 &middot; 15 Oct 2026</p>
+    <p class="version">Version 2.5 &middot; 15 Oct 2026</p>
   </footer>
-  <script type="module" src="./js/app.js?v=2.4"></script>
+  <script type="module" src="./js/app.js?v=2.5"></script>
 </body>
 </html>
 

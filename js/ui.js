@@ -1,4 +1,4 @@
-import {paginateIssues, RESULTS_PAGE_SIZE} from "./ifc-batch.js?v=2.4";
+import {paginateIssues, RESULTS_PAGE_SIZE} from "./ifc-batch.js?v=2.5";
 
 const byId = id => document.getElementById(id);
 
@@ -39,6 +39,7 @@ export const elements = {
   fileSummary: byId("file-summary"),
   fileDetails: byId("file-details"),
   progressCard: byId("progress-card"),
+  workingBanner: byId("working-banner"),
   progress: byId("progress"),
   progressTitle: byId("progress-title"),
   progressPercent: byId("progress-percent"),
@@ -99,9 +100,26 @@ export function showFiles(files) {
     : `${files.length.toLocaleString()} IFC files | ${formatBytes(totalSize)} total | Ready for sequential local processing`;
 }
 
+const baseTitle = document.title;
+let working = false;
+
+// While the tab is busy: show the sticky banner, put progress in the tab title, and warn before leaving.
+export function setWorking(value) {
+  working = value;
+  elements.workingBanner.classList.toggle("hidden", !value);
+  if (!value) document.title = baseTitle;
+}
+
+export const isWorking = () => working;
+
+function titleProgress(percent) {
+  if (working) document.title = `${percent}% working - ${baseTitle}`;
+}
+
 export function updateProgress({stage, current = 0, total = 0, unit = "items"}) {
   elements.progressCard.classList.remove("hidden");
   const percent = total ? Math.min(100, Math.round(current * 100 / total)) : 0;
+  titleProgress(percent);
   elements.progress.value = percent;
   elements.progressPercent.textContent = `${percent}%`;
   elements.progressTitle.textContent = stage;
@@ -350,6 +368,7 @@ function updateDownloadProgress({stage, current = 0, total = 0, unit = "bytes", 
   elements.downloadProgress.value = percent;
   elements.downloadPercent.textContent = `${percent}%`;
   elements.downloadStatus.textContent = stage;
+  titleProgress(percent);
   elements.downloadDetail.textContent = detail ?? (total && unit === "bytes"
     ? `${formatBytes(current)} packaged of ${formatBytes(total)}`
     : "Packaging the repaired IFC files locally in this browser.");
@@ -392,6 +411,7 @@ export function showCompletion(result, packageInfo, onDownload, onReport = null)
   button.textContent = `Download all files (.zip)`;
   button.addEventListener("click", async () => {
     button.disabled = true;
+    setWorking(true);
     button.textContent = "Preparing ZIP...";
     updateDownloadProgress({
       stage: "Starting ZIP package...",
@@ -423,6 +443,7 @@ export function showCompletion(result, packageInfo, onDownload, onReport = null)
       button.textContent = "Try ZIP download again";
     } finally {
       button.disabled = false;
+      setWorking(false);
     }
   });
   elements.downloadList.append(button);

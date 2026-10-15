@@ -1,19 +1,20 @@
-import {analyzeIfc} from "./ifc-analyzer.js?v=2.4";
-import {combineAnalyses, selectedIssuesForFile} from "./ifc-batch.js?v=2.4";
-import {downloadBlob, repairedFileName} from "./ifc-exporter.js?v=2.4";
-import {applyRepairs, verifyNoDanglingReferences, verifyRepairedModel, verifyRepairs} from "./ifc-fixer.js?v=2.4";
-import {loadIfc} from "./ifc-loader.js?v=2.4";
-import {areaReportName, buildAreaReport} from "./area-report.js?v=2.4";
-import {createRepairedZip, repairedArchiveName} from "./zip-exporter.js?v=2.4";
+import {analyzeIfc} from "./ifc-analyzer.js?v=2.5";
+import {combineAnalyses, selectedIssuesForFile} from "./ifc-batch.js?v=2.5";
+import {downloadBlob, repairedFileName} from "./ifc-exporter.js?v=2.5";
+import {applyRepairs, verifyNoDanglingReferences, verifyRepairedModel, verifyRepairs} from "./ifc-fixer.js?v=2.5";
+import {loadIfc} from "./ifc-loader.js?v=2.5";
+import {areaReportName, buildAreaReport} from "./area-report.js?v=2.5";
+import {createRepairedZip, repairedArchiveName} from "./zip-exporter.js?v=2.5";
 import {
-  elements, renderResults, repairAllowed, resetUi, setStep, showCompletion, showError, showFiles,
-  updateProgress, updateRepairButton,
-} from "./ui.js?v=2.4";
+  elements, isWorking, renderResults, repairAllowed, resetUi, setStep, showCompletion, showError, showFiles,
+  setWorking, updateProgress, updateRepairButton,
+} from "./ui.js?v=2.5";
 
 const state = {entries: [], analysis: null, outputs: [], archive: null, busy: false};
 
 function setBusy(value) {
   state.busy = value;
+  setWorking(value);
   elements.choose.disabled = value;
   elements.changeFile.disabled = value;
   elements.repair.disabled = value || !repairAllowed(state.analysis);
@@ -175,7 +176,13 @@ for (const button of [elements.checkAnother, elements.restart, elements.errorRes
   button.addEventListener("click", restart);
 }
 
-window.addEventListener("beforeunload", () => {
+window.addEventListener("beforeunload", event => {
+  // Leaving now would stop the work, so let the browser ask first.
+  if (isWorking()) {
+    event.preventDefault();
+    event.returnValue = "";
+    return;
+  }
   state.outputs = [];
   state.archive = null;
 });
