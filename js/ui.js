@@ -432,7 +432,21 @@ export function showCompletion(result, packageInfo, onDownload, onReport = null)
     reportButton.type = "button";
     reportButton.className = "button";
     reportButton.textContent = "Download areas report only";
-    reportButton.addEventListener("click", onReport);
+    reportButton.addEventListener("click", async () => {
+      // One report at a time; a failure is shown in the download panel and keeps the completion screen.
+      reportButton.disabled = true;
+      try {
+        await onReport();
+      } catch (error) {
+        elements.downloadProgressPanel.classList.remove("hidden");
+        elements.downloadProgress.value = 0;
+        elements.downloadPercent.textContent = "";
+        elements.downloadStatus.textContent = "Unable to prepare the areas report";
+        elements.downloadDetail.textContent = error instanceof Error ? error.message : String(error);
+      } finally {
+        reportButton.disabled = false;
+      }
+    });
     elements.downloadList.append(reportButton);
   }
   setStep(3);

@@ -119,11 +119,13 @@ async function repairSelected() {
       manualOnlyFiles,
       fileErrors: state.analysis.fileErrors.length,
     }, async reportProgress => {
-      state.archive = null;
-      const report = hasReport()
-        ? [{blob: await buildAreaReport(state.analysis), name: areaReportName(state.analysis)}]
-        : [];
-      state.archive = await createRepairedZip([...state.outputs, ...report], reportProgress);
+      // The outputs do not change on the completion screen, so a built ZIP is reused for "Download ZIP again".
+      if (!state.archive) {
+        const report = hasReport()
+          ? [{blob: await buildAreaReport(state.analysis), name: areaReportName(state.analysis)}]
+          : [];
+        state.archive = await createRepairedZip([...state.outputs, ...report], reportProgress);
+      }
       downloadBlob(state.archive, repairedArchiveName());
       return {bytes: state.archive.size};
     }, hasReport() ? downloadReport : null);
