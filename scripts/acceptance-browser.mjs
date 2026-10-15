@@ -21,7 +21,10 @@ const source = named(await openAsBlob(sourcePath), sourcePath);
 const sourceModel = await loadIfc(source);
 const original = await analyzeIfc(sourceModel);
 const selected = original.issues.filter(issue => issue.repairable);
-const {output, repairs, edits} = await applyRepairs(source, selected);
+// A clean file, or one with review-only issues, has nothing to repair: the output is the source unchanged.
+const {output, repairs, edits} = selected.length
+  ? await applyRepairs(source, selected)
+  : {output: new Blob([source], {type: "application/x-step"}), repairs: [], edits: []};
 const byteVerification = await verifyRepairs(source, output, repairs, () => {}, edits);
 named(output, outputPath || "repaired.ifc");
 const outputModel = await loadIfc(output);

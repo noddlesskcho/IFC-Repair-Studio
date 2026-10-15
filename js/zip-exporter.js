@@ -33,8 +33,10 @@ async function crc32Blob(blob, onChunk) {
   let crc = 0xffffffff;
   for (let offset = 0; offset < blob.size; offset += CHUNK_SIZE) {
     const bytes = new Uint8Array(await blob.slice(offset, offset + CHUNK_SIZE).arrayBuffer());
-    for (const byte of bytes) crc = crcTable[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+    for (let index = 0; index < bytes.length; index += 1) crc = crcTable[(crc ^ bytes[index]) & 0xff] ^ (crc >>> 8);
     onChunk(bytes.byteLength);
+    // Let the page repaint between chunks of a large file.
+    await new Promise(resolve => setTimeout(resolve, 0));
   }
   return (crc ^ 0xffffffff) >>> 0;
 }

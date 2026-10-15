@@ -3,9 +3,13 @@ import {refs, stepString} from "./ifc-loader.js?v=2.1";
 // Spatial containers a space can sit in on its way up to a storey.
 const SPATIAL_PARENTS = new Set(["IFCSPACE", "IFCBUILDINGSTOREY", "IFCBUILDING", "IFCSITE", "IFCSPATIALZONE", "IFCPROJECT"]);
 
-// IFC strings encode non-ASCII text as \X2\hhhh\X0\ (UTF-16) or \X\hh (ISO 8859-1).
+// IFC strings encode non-ASCII text as \X2\hhhh\X0\ (UTF-16), \X4\hhhhhhhh\X0\ (UCS-4) or \X\hh (ISO 8859-1).
 export function decodeStepText(text) {
   return String(text)
+    .replace(/\\X4\\((?:[0-9A-F]{8})+)\\X0\\/gi, (_, hex) => {
+      const codes = hex.match(/.{8}/g).map(code => parseInt(code, 16));
+      return codes.every(code => code <= 0x10ffff) ? String.fromCodePoint(...codes) : _;
+    })
     .replace(/\\X2\\((?:[0-9A-F]{4})+)\\X0\\/gi, (_, hex) => String.fromCharCode(...hex.match(/.{4}/g).map(code => parseInt(code, 16))))
     .replace(/\\X\\([0-9A-F]{2})/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
 }

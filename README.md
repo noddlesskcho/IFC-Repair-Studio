@@ -97,7 +97,10 @@ confirms that:
 
 - every planned edit was made, and nothing else changed;
 - no remaining record references a removed record;
-- no supported issue remains.
+- all selected automatic repairs were applied.
+
+Issues that need review in Revit are not changed, so they can remain in the
+repaired file. The completion screen shows how many supported issues remain.
 
 ## Browser and file limits
 

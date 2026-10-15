@@ -8,15 +8,23 @@ export class IfcRepairError extends Error {}
 
 async function bytes(blob) { return new Uint8Array(await blob.arrayBuffer()); }
 
+function sameBytes(left, right) {
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) if (left[index] !== right[index]) return false;
+  return true;
+}
+
 async function assertEqualRanges(source, sourceStart, sourceEnd, output, outputStart) {
   const chunkSize = 4 * 1024 * 1024;
   for (let offset = 0; offset < sourceEnd - sourceStart; offset += chunkSize) {
     const length = Math.min(chunkSize, sourceEnd - sourceStart - offset);
     const left = await bytes(source.slice(sourceStart + offset, sourceStart + offset + length));
     const right = await bytes(output.slice(outputStart + offset, outputStart + offset + length));
-    if (left.length !== right.length || left.some((value, index) => value !== right[index])) {
+    if (!sameBytes(left, right)) {
       throw new IfcRepairError("Unexpected byte changes were detected outside the planned repair edits.");
     }
+    // Let the page repaint between chunks of a large unchanged range.
+    if (offset + chunkSize < sourceEnd - sourceStart) await new Promise(resolve => setTimeout(resolve, 0));
   }
 }
 
@@ -32,15 +40,21 @@ function contextEdits(repairs) {
 function argumentSpans(text) {
   const open = text.indexOf("(");
   const spans = [];
-  let depth = 0, quoted = false, start = open + 1;
+  let depth = 0, quoted = false, comment = false, start = open + 1;
   for (let i = open + 1; i < text.length; i += 1) {
     const c = text[i];
+    // Skip /* ... */ comments as the loader does, so a comma or bracket inside one is not structure.
+    if (comment) {
+      if (c === "*" && text[i + 1] === "/") { comment = false; i += 1; }
+      continue;
+    }
     if (quoted) {
       if (c === "'" && text[i + 1] === "'") i += 1;
       else if (c === "'") quoted = false;
       continue;
     }
-    if (c === "'") quoted = true;
+    if (c === "/" && text[i + 1] === "*") { comment = true; i += 1; }
+    else if (c === "'") quoted = true;
     else if (c === "(") depth += 1;
     else if (c === ")") {
       if (depth === 0) { spans.push([start, i]); return spans; }
@@ -204,8 +218,7 @@ export async function verifyRepairs(source, output, repairs, onProgress = () => 
     outputCursor += edit.start - sourceCursor;
     const replacement = encoder.encode(edit.replacement);
     const actualReplacement = await bytes(output.slice(outputCursor, outputCursor + replacement.length));
-    if (actualReplacement.length !== replacement.length ||
-        actualReplacement.some((value, offset) => value !== replacement[offset])) {
+    if (!sameBytes(actualReplacement, replacement)) {
       throw new IfcRepairError(`Replacement verification failed for record #${edit.id}.`);
     }
     sourceCursor = edit.end;

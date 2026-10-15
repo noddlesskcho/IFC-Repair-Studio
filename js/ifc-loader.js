@@ -122,16 +122,18 @@ const RELATION_SLOTS = {
 };
 const SPACE_QUANTITIES = new Set(["'GrossFloorArea'", "'NetFloorArea'", "'Height'"]);
 
-function captureSpatialRecord(spatial, record) {
+function captureSpatialRecord(spatial, record, isKnown = () => true) {
   const args = record.args;
   if (record.type === "IFCQUANTITYAREA" || record.type === "IFCQUANTITYLENGTH") {
     if (SPACE_QUANTITIES.has(args[0])) spatial.quantities.set(record.id, {name: stepString(args[0]), value: Number(args[3])});
   } else if (record.type === "IFCELEMENTQUANTITY") {
     if (args[2] === "'Qto_SpaceBaseQuantities'") spatial.spaceQuantitySets.set(record.id, refs(args[5]));
   } else if (record.type === "IFCRELDEFINESBYPROPERTIES") {
-    // Only links to space base quantities matter; those sets are written before the link that uses them.
+    // Only links to space base quantities matter. STEP records may come in any order, so a link to a
+    // definition not read yet is kept and resolved after streaming.
     const definitionId = refs(args[5])[0];
     if (spatial.spaceQuantitySets.has(definitionId)) spatial.quantityLinks.push([definitionId, refs(args[4])]);
+    else if (definitionId && !isKnown(definitionId)) spatial.pendingQuantityLinks.push([definitionId, refs(args[4])]);
   } else if (record.type === "IFCRELSPACEBOUNDARY") {
     const spaceId = refs(args[4])[0];
     if (spaceId) spatial.boundaryCounts.set(spaceId, (spatial.boundaryCounts.get(spaceId) || 0) + 1);
@@ -161,12 +163,15 @@ async function streamRecords(file, onRecord, onProgress, stage, CAPTURE_LIMIT = 
   let absolute = 0, lineHasContent = false, inRecord = false;
   let recordStart = 0, recordLength = 0, capture = new Uint8Array(1024);
   let quoted = false, comment = false, lastByte = -1, lastYield = performance.now();
+  // Comments and strings outside entity records (header strings, comments between records).
+  let outerComment = false, outerQuoted = false;
 
   const finishRecord = (end) => {
-    const record = parseCapturedRecord(capture.slice(0, Math.min(recordLength, CAPTURE_LIMIT)), recordStart, end, recordLength > CAPTURE_LIMIT);
+    // The capture buffer is reused; decoding copies the bytes into a string.
+    const record = parseCapturedRecord(capture.subarray(0, Math.min(recordLength, CAPTURE_LIMIT)), recordStart, end, recordLength > CAPTURE_LIMIT);
     if (record) onRecord(record);
-    inRecord = false; quoted = false; comment = false; recordLength = 0;
-    capture = new Uint8Array(1024);
+    inRecord = false; quoted = false; comment = false; recordLength = 0; lastByte = -1;
+    if (capture.length > 64 * 1024) capture = new Uint8Array(1024);
   };
 
   while (true) {
@@ -175,10 +180,25 @@ async function streamRecords(file, onRecord, onProgress, stage, CAPTURE_LIMIT = 
     for (let i = 0; i < value.length; i += 1) {
       const byte = value[i], next = value[i + 1] ?? -1;
       if (!inRecord) {
+        // A comment outside a record counts as whitespace, so an entity may follow it on the same line.
+        if (outerComment) {
+          if (lastByte === 42 && byte === 47) { outerComment = false; lastByte = -1; } else lastByte = byte;
+          continue;
+        }
+        if (outerQuoted) {
+          if (byte === 39) outerQuoted = false;
+          lastByte = byte;
+          continue;
+        }
+        if (lastByte === 47) {
+          if (byte === 42) { outerComment = true; lastByte = -1; continue; }
+          lineHasContent = true;
+        }
         if (byte === 35 && !lineHasContent) { // # at the first non-whitespace position
           inRecord = true; recordStart = absolute + i; recordLength = 0;
         } else if (byte === 10 || byte === 13) lineHasContent = false;
-        else if (byte !== 32 && byte !== 9) lineHasContent = true;
+        else if (byte === 39) { outerQuoted = true; lineHasContent = true; }
+        else if (byte !== 32 && byte !== 9 && byte !== 47) lineHasContent = true;
       }
       if (inRecord) {
         if (recordLength < CAPTURE_LIMIT) {
@@ -198,12 +218,15 @@ async function streamRecords(file, onRecord, onProgress, stage, CAPTURE_LIMIT = 
               recordLength += 1; i += 1;
             } else quoted = false;
           }
-        } else if (lastByte === 47 && byte === 42) comment = true;
-        else if (byte === 39) quoted = true;
+        } else if (lastByte === 47 && byte === 42) {
+          // The opening * must not also close the comment, as in /*/.
+          comment = true; lastByte = -1; continue;
+        } else if (byte === 39) quoted = true;
         else if (byte === 59) {
           finishRecord(absolute + i + 1);
           // STEP permits the next entity to begin after whitespace on the same line.
           lineHasContent = false;
+          continue;
         }
       }
       lastByte = byte;
@@ -217,6 +240,7 @@ async function streamRecords(file, onRecord, onProgress, stage, CAPTURE_LIMIT = 
     }
   }
   if (inRecord) throw new IfcInputError("The IFC contains an unterminated STEP entity record.");
+  if (outerComment || outerQuoted) throw new IfcInputError("The IFC contains an unterminated STEP comment or string.");
 }
 
 export async function loadIfc(file, onProgress = () => {}, fileName = file?.name) {
@@ -244,16 +268,17 @@ export async function loadIfc(file, onProgress = () => {}, fileName = file?.name
   const brepOuters = new Map();
   const spatial = {
     spaces: [], storeys: new Map(), spaceTypeTags: new Map(), aggregates: [], containment: [], typeLinks: [],
-    quantities: new Map(), spaceQuantitySets: new Map(), quantityLinks: [], boundaryCounts: new Map(), units: new Map(), unitAssignments: new Map(),
+    quantities: new Map(), spaceQuantitySets: new Map(), quantityLinks: [], pendingQuantityLinks: [], boundaryCounts: new Map(), units: new Map(), unitAssignments: new Map(),
   };
   const truncatedRelations = [];
+  const isKnown = id => entities.has(id);
 
   await streamRecords(file, record => {
     entities.set(record.id, record.type);
     if (SPATIAL_TYPES.has(record.type)) {
       // A relationship longer than the capture limit is read again in full after streaming.
       if (record.truncated && RELATION_SLOTS[record.type]) truncatedRelations.push({start: record.start, end: record.end});
-      else captureSpatialRecord(spatial, record);
+      else captureSpatialRecord(spatial, record, isKnown);
     }
     if (DETAILED_TYPES.has(record.type)) detailed.set(record.id, compactDetailedRecord(record));
     else if (record.type === "IFCCLOSEDSHELL") {
@@ -276,8 +301,12 @@ export async function loadIfc(file, onProgress = () => {}, fileName = file?.name
   }, onProgress, "Reading IFC records");
   for (const {start, end} of truncatedRelations) {
     const record = parseCapturedRecord(new Uint8Array(await file.slice(start, end).arrayBuffer()), start, end);
-    if (record) captureSpatialRecord(spatial, record);
+    if (record) captureSpatialRecord(spatial, record, isKnown);
   }
+  for (const link of spatial.pendingQuantityLinks) {
+    if (spatial.spaceQuantitySets.has(link[0])) spatial.quantityLinks.push(link);
+  }
+  delete spatial.pendingQuantityLinks;
   onProgress({stage: "IFC records loaded", current: file.size, total: file.size, unit: "bytes"});
   return {file, schema, entities, detailed, productCandidates, typeCandidates, emptyShells, brepOuters, spatial};
 }
