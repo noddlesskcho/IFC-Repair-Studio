@@ -8,16 +8,25 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>IFC+SG Repair Tool</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23175cd3'/%3E%3Cpath d='M18 20h28v7H25v7h17v7H25v11h-7z' fill='white'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="./css/app.css?v=2.3">
+  <link rel="stylesheet" href="./css/app.css?v=2.4">
 </head>
 <body>
   <header class="site-header">
     <div>
-      <p class="eyebrow">IFC4 / IFC+SG &middot; CORENET X ERRORS IFC0000104 AND IFC0000101 &middot; PRE-SUBMISSION CHECK</p>
+      <p class="eyebrow">IFC4 &middot; IFC+SG &middot; CORENET X PRE-SUBMISSION CHECK</p>
       <h1>IFC+SG Repair Tool</h1>
-      <p class="subtitle">Checks IFC+SG files from any BIM authoring software and repairs the two problems behind CORENET X Model Checker error <strong>IFC0000104</strong> (&ldquo;File contains invalid or incomplete IFC data&rdquo;): shapes missing their geometry context (<code>IfcShapeRepresentation.ContextOfItems is required</code>) and empty 3D shapes with no surfaces (<code>IfcClosedShell.CfsFaces must not be empty</code>). It also finds areas exported without geometry (<code>IfcSpace</code>), explains why, and lists them in an Excel report with element IDs so you can fix them in the source model. Files that are not IFC4 (for example IFC2X3) are detected and blocked as error <strong>IFC0000101</strong> (&ldquo;Update file to a supported IFC version&rdquo;). The tool cannot repair this: check your IFC export settings and export the model again as IFC4.</p>
+      <p class="subtitle">Repairs CORENET X error <strong>IFC0000104</strong> and detects <strong>IFC0000101</strong> in IFC+SG files from any BIM authoring software.</p>
+      <details class="about-checks">
+        <summary>What it checks</summary>
+        <ul class="check-list">
+          <li><span class="check-tag repair">Repairs</span><span class="check-code">IFC0000104</span><span class="check-text"><strong>Missing geometry context</strong><code>IfcShapeRepresentation.ContextOfItems is required</code></span></li>
+          <li><span class="check-tag repair">Repairs</span><span class="check-code">IFC0000104</span><span class="check-text"><strong>Empty 3D shapes</strong><code>IfcClosedShell.CfsFaces must not be empty</code></span></li>
+          <li><span class="check-tag blocked">Detects</span><span class="check-code">IFC0000101</span><span class="check-text"><strong>File is not IFC4</strong>Cannot be repaired. Check your IFC export settings and export again as IFC4.</span></li>
+          <li><span class="check-tag report">Reports</span><span class="check-code">IfcSpace</span><span class="check-text"><strong>Areas without geometry</strong>Excel report with element IDs, to fix in the source model.</span></li>
+        </ul>
+      </details>
     </div>
-    <span class="privacy-badge"><span>Your IFC file is processed locally.</span><span>It is not uploaded or stored.</span></span>
+    <span class="privacy-badge"><span>Processed locally in this browser</span><span>Your IFC files are not uploaded or stored.</span><span class="keep-open">Keep this tab open and in front until it finishes.</span></span>
   </header>
 
   <main>
@@ -35,7 +44,7 @@
       <input id="file-input" type="file" accept=".ifc" multiple hidden>
       <div id="drop-zone" class="drop-zone" tabindex="0" role="button" aria-label="Drop IFC files or press Enter to choose them">
         <strong>Drop your .ifc files here</strong>
-        <span>Files are processed sequentially and locally. They are not uploaded.</span>
+        <span>Files are processed one at a time in this tab. They are not uploaded.</span>
       </div>
       <div id="file-summary" class="file-summary hidden" aria-live="polite">
         <span id="file-details"></span>
@@ -47,6 +56,7 @@
       <div class="progress-head"><strong id="progress-title">Reading IFC</strong><span id="progress-percent">0%</span></div>
       <progress id="progress" max="100" value="0"></progress>
       <p id="progress-detail" class="muted">Preparing local analysis...</p>
+      <p class="muted tab-hint">Keep this tab open and in front until this finishes.</p>
       <div class="surf-bot" aria-hidden="true">
         <svg viewBox="0 0 150 82" focusable="false"><path class="wave wave-back" d="M2 67c16-13 31-13 47 0s31 13 47 0 31-13 52 0"/><path class="wave wave-front" d="M2 75c16-11 31-11 47 0s31 11 47 0 31-11 52 0"/><g class="robot"><path class="board" d="M44 60c22 7 46 7 68 0-5 11-17 15-34 15S49 71 44 60Z"/><rect class="bot-body" x="63" y="35" width="30" height="24" rx="7"/><rect class="bot-head" x="59" y="11" width="38" height="28" rx="9"/><circle class="bot-eye" cx="70" cy="25" r="3"/><circle class="bot-eye" cx="86" cy="25" r="3"/><path class="bot-line" d="M70 33h16M63 45 50 54m43-9 13 9M70 59l-7 5m23-5 7 5"/><path class="antenna" d="M78 11V5m0 0 5-3"/></g></svg>
       </div>
@@ -197,11 +207,10 @@
   </main>
 
   <footer>
-    <p><strong>Browser repair scope:</strong> IFC4 Body/SweptSolid, Body/Tessellation, and FootPrint/Curve2D missing-context repairs when exactly one compatible project-connected context is available, and removal of empty <code>IfcClosedShell</code> geometry reached through <code>IfcFacetedBrep</code>. Report only (no repair): <code>IfcSpace</code> with <code>Representation = $</code>, and files that are not IFC4 (error IFC0000101).</p>
     <p>This tool is not a complete IFC validator or CORENET X compliance checker.</p>
-    <p class="version">Version 2.3 &middot; 15 Oct 2026</p>
+    <p class="version">Version 2.4 &middot; 15 Oct 2026</p>
   </footer>
-  <script type="module" src="./js/app.js?v=2.3"></script>
+  <script type="module" src="./js/app.js?v=2.4"></script>
 </body>
 </html>
 

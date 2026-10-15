@@ -1,4 +1,4 @@
-import {refs, stepString} from "./ifc-loader.js?v=2.3";
+import {refs, stepString} from "./ifc-loader.js?v=2.4";
 
 // Spatial containers a space can sit in on its way up to a storey.
 const SPATIAL_PARENTS = new Set(["IFCSPACE", "IFCBUILDINGSTOREY", "IFCBUILDING", "IFCSITE", "IFCSPATIALZONE", "IFCPROJECT"]);

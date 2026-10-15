@@ -1,6 +1,6 @@
 {
   "name": "ifc-shape-representation-repair-tool",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "private": true,
   "type": "module",
   "description": "Static browser tool that repairs CORENET X error IFC0000104 in IFC+SG files from any BIM authoring software: missing IfcShapeRepresentation.ContextOfItems and empty IfcClosedShell geometry.",
