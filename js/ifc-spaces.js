@@ -1,4 +1,4 @@
-import {refs, stepString} from "./ifc-loader.js?v=2.2";
+import {refs, stepString} from "./ifc-loader.js?v=2.3";
 
 // Spatial containers a space can sit in on its way up to a storey.
 const SPATIAL_PARENTS = new Set(["IFCSPACE", "IFCBUILDINGSTOREY", "IFCBUILDING", "IFCSITE", "IFCSPATIALZONE", "IFCPROJECT"]);
@@ -76,8 +76,8 @@ function projectUnits(model) {
 
 const formatNumber = (value, digits) => value.toLocaleString("en-US", {minimumFractionDigits: digits, maximumFractionDigits: digits});
 
-// Explains the missing shape from Revit's exported base quantities (Qto_SpaceBaseQuantities).
-// Revit writes the room's calculated area and height even when it cannot build the 3D shape.
+// Explains the missing shape from the exported base quantities (Qto_SpaceBaseQuantities).
+// Authoring tools such as Revit write the calculated area and height even when no 3D shape could be built.
 export function whyNoGeometry(area, height) {
   if (area === null) {
     return {reason: "noData", reasonLabel: "No area data in the IFC",
@@ -85,18 +85,18 @@ export function whyNoGeometry(area, height) {
   }
   if (area <= 0) {
     return {reason: "noArea", reasonLabel: "Area is 0: not enclosed or redundant",
-      reasonDetail: "Revit calculated no floor area. The room or area is not enclosed by its boundaries, or it is redundant (two rooms in one enclosed region)."};
+      reasonDetail: "The exported base quantities show no floor area. The room or area is not enclosed by its boundaries, or it is redundant (two rooms in one enclosed region)."};
   }
   if (height !== null && height <= 0) {
     return {reason: "noHeight", reasonLabel: "Has area but height is 0",
-      reasonDetail: "Revit calculated a floor area but no height. The upper limit or limit offset puts the top of the room at or below its base."};
+      reasonDetail: "The exported base quantities show a floor area but no height. The room's height setting (upper limit or top offset) puts its top at or below its base."};
   }
-  return {reason: "shapeFailed", reasonLabel: "Has area, but Revit could not build the 3D shape",
-    reasonDetail: "Revit calculated the area and height, so the room is placed and enclosed, but its IFC export could not turn the room boundary into a 3D shape. Common causes are very short or overlapping boundary lines, thin slivers or narrow gaps in the boundary, or a boundary that changes over the room height."};
+  return {reason: "shapeFailed", reasonLabel: "Has area, but no 3D shape was exported",
+    reasonDetail: "The exported base quantities show an area and a height, so the room is placed and enclosed, but the IFC export could not turn the room boundary into a 3D shape. Common causes are very short or overlapping boundary lines, thin slivers or narrow gaps in the boundary, or a boundary that changes over the room height."};
 }
 
 // Finds every IfcSpace whose Representation is missing ($). These cannot be repaired in the IFC:
-// the room or area has no shape to export, so it must be fixed in Revit.
+// the room or area has no shape to export, so it must be fixed in the source model.
 export async function analyzeSpaces(model, onProgress = () => {}) {
   const spaces = model.spatial?.spaces || [];
   const missing = spaces.filter(space => !space.representation || space.representation === "$");

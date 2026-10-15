@@ -1,14 +1,14 @@
-import {analyzeIfc} from "./ifc-analyzer.js?v=2.2";
-import {combineAnalyses, selectedIssuesForFile} from "./ifc-batch.js?v=2.2";
-import {downloadBlob, repairedFileName} from "./ifc-exporter.js?v=2.2";
-import {applyRepairs, verifyNoDanglingReferences, verifyRepairedModel, verifyRepairs} from "./ifc-fixer.js?v=2.2";
-import {loadIfc} from "./ifc-loader.js?v=2.2";
-import {areaReportName, buildAreaReport} from "./area-report.js?v=2.2";
-import {createRepairedZip, repairedArchiveName} from "./zip-exporter.js?v=2.2";
+import {analyzeIfc} from "./ifc-analyzer.js?v=2.3";
+import {combineAnalyses, selectedIssuesForFile} from "./ifc-batch.js?v=2.3";
+import {downloadBlob, repairedFileName} from "./ifc-exporter.js?v=2.3";
+import {applyRepairs, verifyNoDanglingReferences, verifyRepairedModel, verifyRepairs} from "./ifc-fixer.js?v=2.3";
+import {loadIfc} from "./ifc-loader.js?v=2.3";
+import {areaReportName, buildAreaReport} from "./area-report.js?v=2.3";
+import {createRepairedZip, repairedArchiveName} from "./zip-exporter.js?v=2.3";
 import {
   elements, renderResults, repairAllowed, resetUi, setStep, showCompletion, showError, showFiles,
   updateProgress, updateRepairButton,
-} from "./ui.js?v=2.2";
+} from "./ui.js?v=2.3";
 
 const state = {entries: [], analysis: null, outputs: [], archive: null, busy: false};
 

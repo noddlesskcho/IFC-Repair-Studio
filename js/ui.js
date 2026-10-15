@@ -1,4 +1,4 @@
-import {paginateIssues, RESULTS_PAGE_SIZE} from "./ifc-batch.js?v=2.2";
+import {paginateIssues, RESULTS_PAGE_SIZE} from "./ifc-batch.js?v=2.3";
 
 const byId = id => document.getElementById(id);
 
@@ -143,7 +143,7 @@ function populateFileFilter(analysis) {
     const option = document.createElement("option");
     option.value = String(file.fileIndex);
     option.textContent = file.error
-      ? `${file.fileName} (${file.blockedSchema ? `blocked: ${file.blockedSchema}, not IFC4` : "file could not be checked"})`
+      ? `${file.fileName} (${file.blockedSchema ? `blocked: ${file.blockedSchema}, not IFC4 (IFC0000101)` : "file could not be checked"})`
       : `${file.fileName} (${(file.issueCount + file.spaceIssueCount).toLocaleString()} issue${file.issueCount + file.spaceIssueCount === 1 ? "" : "s"})`;
     elements.fileFilter.append(option);
   }
@@ -277,9 +277,9 @@ function renderPanels(analysis, changedAnalysis) {
     count => `${count.toLocaleString()} will get the missing link (nothing deleted)`);
   const spaceCount = analysis.spaceIssues.length;
   const areas = count => `${count.toLocaleString()} area${count === 1 ? "" : "s"}`;
-  elements.spaceSummary.textContent = `${spaceCount.toLocaleString()} of ${analysis.spacesScanned.toLocaleString()} IfcSpace${analysis.spacesScanned === 1 ? "" : "s"} ${spaceCount === 1 ? "has" : "have"} no shape. Report only: fix them in Revit.`;
+  elements.spaceSummary.textContent = `${spaceCount.toLocaleString()} of ${analysis.spacesScanned.toLocaleString()} IfcSpace${analysis.spacesScanned === 1 ? "" : "s"} ${spaceCount === 1 ? "has" : "have"} no shape. Report only: fix them in the source model.`;
   elements.reportBar.classList.toggle("hidden", !spaceCount);
-  elements.reportSummary.textContent = `${areas(spaceCount)} without geometry, with the reason, the Revit Lookup ID and how to fix each one. The repaired ZIP also includes this report.`;
+  elements.reportSummary.textContent = `${areas(spaceCount)} without geometry, with the reason, the element ID and how to fix each one. The repaired ZIP also includes this report.`;
   elements.fileErrors.classList.toggle("hidden", !analysis.fileErrors.length);
   elements.fileErrors.replaceChildren(...analysis.fileErrors.map(fileError => {
     const item = document.createElement("li");
@@ -311,12 +311,12 @@ export function renderResults(analysis) {
   elements.schemaMetric.classList.toggle("blocked", blocked.length > 0);
   elements.schemaNote.classList.toggle("hidden", !blocked.length);
   elements.schemaNote.textContent = blocked.length
-    ? `CORENET X does not support ${blocked.join(" or ")}. Only IFC4 files are accepted. Export the model from Revit again as IFC4 with the IFC+SG settings.`
+    ? `CORENET X error IFC0000101: ${blocked.join(" or ")} is not a supported IFC version. This cannot be repaired. Check your IFC export settings and export the model again as IFC4 with the IFC+SG settings.`
     : "";
   elements.signatureSummary.textContent = analysis.issues.length || analysis.fileErrors.length
     ? `Files checked: ${analysis.successfulFiles.toLocaleString()} of ${analysis.filesScanned.toLocaleString()}.`
     : analysis.spaceIssues.length
-      ? "No missing contexts or empty IfcClosedShell geometry were detected, so there is nothing to repair. Some areas have no geometry: download the areas report and fix them in Revit."
+      ? "No missing contexts or empty IfcClosedShell geometry were detected, so there is nothing to repair. Some areas have no geometry: download the areas report and fix them in the source model."
       : "No supported missing contexts, empty IfcClosedShell geometry or areas without geometry were detected. There is nothing to repair.";
   const repairFileIndexes = new Set(analysis.issues.filter(issue => issue.repairable).map(issue => issue.fileIndex));
   const cleanFiles = analysis.files.filter(file => !file.error && file.issueCount + file.spaceIssueCount === 0).length;
@@ -324,9 +324,9 @@ export function renderResults(analysis) {
     !repairFileIndexes.has(file.fileIndex)).length;
   const fileClauses = [`${repairFileIndexes.size.toLocaleString()} of ${analysis.successfulFiles.toLocaleString()} checked file${analysis.successfulFiles === 1 ? "" : "s"} will be repaired automatically`];
   if (cleanFiles) fileClauses.push(`${cleanFiles.toLocaleString()} need no repair`);
-  if (manualOnlyFiles) fileClauses.push(`${manualOnlyFiles.toLocaleString()} need fixes in Revit only`);
+  if (manualOnlyFiles) fileClauses.push(`${manualOnlyFiles.toLocaleString()} need fixes in the source model only`);
   const blockedFiles = analysis.fileErrors.length - unreadable;
-  if (blockedFiles) fileClauses.push(`${blockedFiles.toLocaleString()} blocked because ${blockedFiles === 1 ? "it is" : "they are"} not IFC4`);
+  if (blockedFiles) fileClauses.push(`${blockedFiles.toLocaleString()} blocked because ${blockedFiles === 1 ? "it is" : "they are"} not IFC4 (IFC0000101), export again`);
   if (unreadable) fileClauses.push(`${unreadable.toLocaleString()} could not be checked`);
   elements.repairFileSummary.textContent = `${fileClauses.join(" · ")}.`;
   renderBreakdown(analysis);

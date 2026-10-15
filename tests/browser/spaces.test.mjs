@@ -48,7 +48,7 @@ function zipEntries(bytes) {
   return entries;
 }
 
-test("IfcSpace without Representation is found with level and Revit Lookup ID", async () => {
+test("IfcSpace without Representation is found with level and element ID", async () => {
   const analysis = await analyzeIfc(await loadIfc(await fixture("space-missing-representation.ifc")));
   const spaces = analysis.spaces;
 
@@ -68,7 +68,7 @@ test("IfcSpace without Representation is found with level and Revit Lookup ID", 
   assert.equal(spaces.issues[1].revitId, "7654321");
 });
 
-test("Revit Lookup ID comes from IfcSpaceType.Tag", async () => {
+test("element ID comes from IfcSpaceType.Tag", async () => {
   const analysis = await analyzeIfc(await loadIfc(await fixture("space-type-tag-revit-id.ifc")));
 
   assert.equal(analysis.spaces.issues.length, 1);
@@ -117,7 +117,7 @@ test("combined analysis carries space issues per file and the Excel report lists
   assert.ok(parts.has("[Content_Types].xml"));
   assert.match(parts.get("xl/workbook.xml"), /name="Areas without geometry".*name="How to use"/);
   const sheet = parts.get("xl/worksheets/sheet1.xml");
-  for (const title of ["Revit Lookup ID", "Area", "Height", "Why no geometry", "What to do in Revit"]) {
+  for (const title of ["Element ID", "Area", "Height", "Why no geometry", "What to do in the source model"]) {
     assert.match(sheet, new RegExp(`<t xml:space="preserve">${title}</t>`));
   }
   assert.match(sheet, /<t xml:space="preserve">Hardscape \(A\)<\/t>/);
@@ -126,7 +126,7 @@ test("combined analysis carries space issues per file and the Excel report lists
   assert.equal((sheet.match(/<row /g) || []).length, 4);
 });
 
-test("Why no geometry is read from Revit base quantities", async () => {
+test("Why no geometry is read from exported base quantities", async () => {
   const space = (id, name) => `#${id}=IFCSPACE('0SPACE${id}00000000000000',$,'${name}',$,$,$,$,'${name}',.ELEMENT.,.NOTDEFINED.,$);`;
   const quantities = (id, spaceId, area, height) => `#${id}1=IFCQUANTITYAREA('GrossFloorArea','',$,${area},$);
 #${id}2=IFCQUANTITYLENGTH('Height','',$,${height},$);
@@ -152,12 +152,12 @@ ${quantities(40, 12, "12.5", "0.")}
   assert.equal(byNumber.A.area, "24.02 m²");
   assert.equal(byNumber.A.height, "4,704 mm");
   assert.equal(byNumber.A.boundaries, 2);
-  assert.match(byNumber.A.reasonLabel, /Has area, but Revit could not build the 3D shape/);
+  assert.match(byNumber.A.reasonLabel, /Has area, but no 3D shape was exported/);
   assert.equal(byNumber.B.reason, "noArea");
   assert.equal(byNumber.C.reason, "noHeight");
   assert.equal(byNumber.D.reason, "noData");
   assert.equal(byNumber.D.area, "N/A");
-  assert.match(areaAction(byNumber.D), /Room or Area schedule.*Export base quantities/);
+  assert.match(areaAction(byNumber.D), /room or area schedule.*base quantities \(Qto\)/);
 });
 
 test("a blocked IFC2X3 file is listed as a file error with its schema", async () => {
@@ -172,5 +172,5 @@ test("a blocked IFC2X3 file is listed as a file error with its schema", async ()
   assert.deepEqual(combined.blockedSchemas, ["IFC2X3"]);
   assert.equal(combined.schema, "IFC4 / IFC2X3");
   assert.equal(combined.fileErrors[0].fileName, "old-export.ifc");
-  assert.match(combined.fileErrors[0].message, /CORENET X does not support IFC2X3/);
+  assert.match(combined.fileErrors[0].message, /IFC0000101: IFC2X3 is not a supported IFC version/);
 });

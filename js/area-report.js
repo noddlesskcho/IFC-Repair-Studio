@@ -1,27 +1,27 @@
-import {storedZip} from "./zip-exporter.js?v=2.2";
+import {storedZip} from "./zip-exporter.js?v=2.3";
 
 const XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 const encoder = new TextEncoder();
 
 const ACTIONS = {
   shapeFailed: "Open a plan view and a 3D view with the room or area interior visible. Look for very short or overlapping boundary lines, thin slivers or narrow gaps, and simplify the boundary or its separation lines. Export the IFC again and check the new file here.",
-  noArea: "Close the boundary with walls, room separation lines or area boundary lines, or delete the room or area if it is redundant or not needed. Export the IFC again and check the new file here.",
-  noHeight: "Set the Upper Limit and Limit Offset so the top of the room is above its base. Export the IFC again and check the new file here.",
-  noData: "Check the room or area in plan and in 3D. Turn on Export base quantities in the IFC export setup so the next check can show the cause.",
+  noArea: "Close the boundary with walls or room, space or area boundary lines, or delete the room or area if it is redundant or not needed. Export the IFC again and check the new file here.",
+  noHeight: "Set the room's height (upper limit or top offset) so its top is above its base. Export the IFC again and check the new file here.",
+  noData: "Check the room or area in plan and in 3D. Turn on base quantities (Qto) in the IFC export settings so the next check can show the cause.",
 };
 
 export function areaAction(space) {
   const find = space.revitId === "Not Found"
-    ? "Find it by Number and Name in the Room or Area schedule."
-    : "Find it with Manage > Select by ID and the Revit Lookup ID.";
+    ? "Find it by Number and Name in the room or area schedule of your authoring software."
+    : "Find it by its Element ID or GUID in your authoring software (in Revit: Manage > Select by ID).";
   return `${find} ${ACTIONS[space.reason] || ACTIONS.noData}`;
 }
 
 const SHEETS = [
   {
     name: "Areas without geometry",
-    columns: [["No.", 6], ["File", 34], ["Level", 18], ["Number", 14], ["Name", 28], ["Object Type", 14], ["Revit Lookup ID", 16],
-      ["Area", 14], ["Height", 12], ["Why no geometry", 34], ["Explanation", 70], ["What to do in Revit", 80], ["GUID", 26], ["PredefinedType", 16]],
+    columns: [["No.", 6], ["File", 34], ["Level", 18], ["Number", 14], ["Name", 28], ["Object Type", 14], ["Element ID", 16],
+      ["Area", 14], ["Height", 12], ["Why no geometry", 34], ["Explanation", 70], ["What to do in the source model", 80], ["GUID", 26], ["PredefinedType", 16]],
     rows: analysis => analysis.spaceIssues.map((space, index) => [
       index + 1, space.fileName, space.level, space.number, space.name, space.objectType, space.revitId,
       space.area, space.height, space.reasonLabel, space.reasonDetail, areaAction(space), space.guid, space.predefinedType,
@@ -31,13 +31,13 @@ const SHEETS = [
     name: "How to use",
     columns: [["Areas without geometry report", 120]],
     rows: () => [
-      ["Each row is an IfcSpace (a Revit room, space or area) that was exported with no shape (IfcSpace.Representation = $)."],
+      ["Each row is an IfcSpace (a room, space or area) that was exported with no shape (IfcSpace.Representation = $)."],
       ["The repair tool cannot add a shape: the IFC file has no correct outline for these spaces. They stay unchanged in the repaired IFC."],
-      ["Fix each one in Revit, then export the IFC again and check the new file with the tool."],
-      ["Why no geometry is read from the area and height that Revit exported for the space (Qto_SpaceBaseQuantities)."],
-      ["Has area, but Revit could not build the 3D shape: the room is placed and enclosed, but its boundary could not be turned into a 3D shape."],
+      ["Fix each one in the source model, then export the IFC again and check the new file with the tool."],
+      ["Why no geometry is read from the area and height exported for the space (Qto_SpaceBaseQuantities)."],
+      ["Has area, but no 3D shape was exported: the room is placed and enclosed, but its boundary could not be turned into a 3D shape."],
       ["Area is 0: the room or area is not enclosed, or it is redundant."],
-      ["Has area but height is 0: the upper limit or limit offset puts the top of the room at or below its base."],
+      ["Has area but height is 0: the room's height setting puts its top at or below its base."],
       ["No area data in the IFC: base quantities were not exported, so the cause cannot be read from the file."],
     ],
   },
@@ -72,7 +72,7 @@ function workbookParts(analysis) {
     "_rels/.rels": `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
     "xl/workbook.xml": `<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${SHEETS.map((sheet, index) => `<sheet name="${sheet.name}" sheetId="${index + 1}" r:id="rId${index + 1}"/>`).join("")}</sheets></workbook>`,
     "xl/_rels/workbook.xml.rels": `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheetIds.map(id => `<Relationship Id="rId${id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${id}.xml"/>`).join("")}<Relationship Id="rId${SHEETS.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`,
-    // Style 1: bold header. Style 2: text that wraps, so long Revit IDs and GUIDs never turn into numbers.
+    // Style 1: bold header. Style 2: text that wraps, so long element IDs and GUIDs never turn into numbers.
     "xl/styles.xml": `<?xml version="1.0" encoding="UTF-8"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="49" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`,
     ...Object.fromEntries(SHEETS.map((sheet, index) => [`xl/worksheets/sheet${index + 1}.xml`, worksheetXml(sheet, analysis)])),
   };

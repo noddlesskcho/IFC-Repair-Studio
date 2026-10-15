@@ -1,9 +1,9 @@
 {
   "name": "ifc-shape-representation-repair-tool",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "private": true,
   "type": "module",
-  "description": "Static browser tool for repairing missing IfcShapeRepresentation context references and empty IfcClosedShell geometry in IFC+SG files.",
+  "description": "Static browser tool that repairs CORENET X error IFC0000104 in IFC+SG files from any BIM authoring software: missing IfcShapeRepresentation.ContextOfItems and empty IfcClosedShell geometry.",
   "scripts": {
     "build": "node scripts/build-static.mjs",
     "test": "node --test tests/browser/*.test.mjs"

@@ -13,10 +13,11 @@ const DETAILED_TYPES = new Set([
 
 export class IfcInputError extends Error {}
 
-// CORENET X accepts IFC4 (IFC+SG) only, so any other schema is rejected before the file is read.
+// CORENET X accepts IFC4 (IFC+SG) only and rejects any other schema with error IFC0000101,
+// so such a file is blocked before it is read. It cannot be repaired: it must be exported again.
 export class IfcSchemaError extends IfcInputError {
   constructor(schema) {
-    super(`CORENET X does not support ${schema} files. Export the model from Revit again as IFC4 with the IFC+SG settings, then check the new file.`);
+    super(`CORENET X error IFC0000101: ${schema} is not a supported IFC version. This cannot be repaired. Check your IFC export settings, export the model again as IFC4 with the IFC+SG settings, then check the new file.`);
     this.schema = schema;
   }
 }
@@ -135,7 +136,7 @@ function compactDetailedRecord(record) {
 }
 
 // Records the IfcSpace check needs: spaces, storeys, space types, the relationships that link them,
-// and the Revit base quantities (area, height), space boundaries and units that explain a missing shape.
+// and the exported base quantities (area, height), space boundaries and units that explain a missing shape.
 const SPATIAL_TYPES = new Set([
   "IFCSPACE", "IFCBUILDINGSTOREY", "IFCSPACETYPE",
   "IFCRELAGGREGATES", "IFCRELCONTAINEDINSPATIALSTRUCTURE", "IFCRELDEFINESBYTYPE", "IFCRELDEFINESBYPROPERTIES",
@@ -320,7 +321,7 @@ export async function loadIfc(file, onProgress = () => {}, fileName = file?.name
       if (outer) brepOuters.set(record.id, outer);
     }
     if (!DETAILED_TYPES.has(record.type) && record.args.length >= 7 && /^IFC[A-Z0-9_]+$/.test(record.type) && /^#\d+$/.test(record.args[6] || "")) {
-      // Keep ObjectType (Revit family:type) and Tag (Revit element ID) so users can find the element.
+      // Keep ObjectType (for example Revit family:type) and Tag (the authoring element ID) so users can find the element.
       record.args = [record.args[0], undefined, record.args[2], undefined, record.args[4], undefined, record.args[6], record.args[7]];
       productCandidates.push(record);
     } else if (/(TYPE|STYLE)$/.test(record.type) && /^\(\s*#/.test(record.args[6] || "")) {

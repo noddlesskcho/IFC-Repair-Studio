@@ -80,7 +80,7 @@ test("a file that is not IFC4 is blocked before its records are read", async () 
     await assert.rejects(loadIfc(blob, () => { streamed = true; }), error => {
       assert.ok(error instanceof IfcSchemaError);
       assert.equal(error.schema, schema);
-      assert.match(error.message, new RegExp(`CORENET X does not support ${schema}`));
+      assert.match(error.message, new RegExp(`CORENET X error IFC0000101: ${schema} is not a supported IFC version.*Check your IFC export settings`));
       return true;
     });
     assert.equal(streamed, false);

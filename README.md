@@ -1,8 +1,16 @@
 # IFC+SG Repair Tool
 
-A browser tool that checks IFC+SG files exported from Autodesk Revit 2025 and 2026
-before they are submitted to CORENET X. It repairs two known export problems and
-reports the rooms and areas that must be fixed in Revit.
+A browser tool that checks IFC+SG (IFC4) files before they are submitted to
+CORENET X. It works with IFC files from any BIM authoring software. It repairs the
+two problems behind CORENET X Model Checker error **IFC0000104** ("File contains
+invalid or incomplete IFC data"). It also detects error **IFC0000101** (file is not
+IFC4) and reports the rooms and areas that must be fixed in the source model.
+
+| CORENET X error | Detail shown by the portal | What this tool does |
+|---|---|---|
+| IFC0000104 | `IfcShapeRepresentation.ContextOfItems is required` | Repairs it |
+| IFC0000104 | `IfcClosedShell.CfsFaces must not be empty` | Repairs it |
+| IFC0000101 | `Update file to a supported IFC version` (for example IFC2X3) | Detects and reports it. Cannot be repaired: check the IFC export settings and export again as IFC4 |
 
 **Open the tool:** https://noddlesskcho.github.io/IFC-Repair-Studio/
 
@@ -28,10 +36,10 @@ Your original files are never changed.
 
 | Check | What the tool does |
 |---|---|
-| Missing geometry context (`IfcShapeRepresentation.ContextOfItems = $`) | Repairs it. It adds the link to the model's only matching context. Nothing is deleted. |
-| Empty 3D shapes (`IfcClosedShell` with no faces) | Repairs it. It deletes only the empty shape; the element keeps its name, Revit ID, properties and level. Check these elements in Revit first. |
-| Areas without geometry (`IfcSpace.Representation = $`) | Report only. Lists each room or area with its Revit Lookup ID, the reason it has no shape, and how to fix it in Revit. |
-| File is not IFC4 (for example IFC2X3) | Blocks the file. CORENET X accepts IFC4 only. The IFC schema box turns red. |
+| Missing geometry context (`IfcShapeRepresentation.ContextOfItems = $`), error IFC0000104 | Repairs it. It adds the link to the model's only matching context. Nothing is deleted. |
+| Empty 3D shapes (`IfcClosedShell` with no faces), error IFC0000104 | Repairs it. It deletes only the empty shape; the element keeps its name, element ID, properties and level. Check these elements in the source model first. |
+| Areas without geometry (`IfcSpace.Representation = $`) | Report only. Lists each room or area with its element ID, the reason it has no shape, and how to fix it in the source model. |
+| File is not IFC4 (for example IFC2X3), error IFC0000101 | Report only. The file is blocked and the IFC schema box turns red. It cannot be repaired: check the IFC export settings, export the model again as IFC4 with the IFC+SG settings, then check the new file. |
 
 This tool is not a complete IFC validator or CORENET X compliance checker. A
 repaired IFC should still go through the normal submission validation.
@@ -41,17 +49,18 @@ repaired IFC should still go through the normal submission validation.
 Each shape must name the view it belongs to: the 3D model (`Body`) or the 2D plan
 outline (`FootPrint`). The tool repairs `Body / SweptSolid`, `Body / Tessellation`
 and `FootPrint / Curve2D` shapes when exactly one compatible, project-connected
-context exists. It checks every `IfcShapeRepresentation`, including those used by
+context exists. The portal reports this as error IFC0000104 with the detail
+`IfcShapeRepresentation.ContextOfItems is required`. It checks every `IfcShapeRepresentation`, including those used by
 `IfcProductDefinitionShape`, `IfcShapeAspect`, presentation layers and
 `IfcRepresentationMap`. Only the missing attribute is replaced. When no context,
 or more than one, matches, the shape is reported and not changed.
 
 ### Empty IfcClosedShell geometry
 
-Revit can export an `IfcFacetedBrep` whose outer shell has no faces:
+An IFC exporter can write an `IfcFacetedBrep` whose outer shell has no faces:
 `IFCCLOSEDSHELL(());`. `IfcClosedShell.CfsFaces` is `SET [1:?] OF IfcFace`, so the
-file is invalid IFC4, and the portal can stop processing the model. The tool
-removes:
+file is invalid IFC4. The portal reports this as error IFC0000104 with the detail
+`IfcClosedShell.CfsFaces must not be empty`. The tool removes:
 
 - the empty `IfcClosedShell` and the `IfcFacetedBrep` that wraps it;
 - the brep reference in `IfcShapeRepresentation.Items`, and any `IfcStyledItem`
@@ -70,24 +79,24 @@ geometry.
 
 ### Areas without geometry (report only)
 
-Every `IfcSpace` (Revit room, space or area) whose `Representation` is `$` is
-listed with its number, name, level, GUID and Revit Lookup ID (from
-`IfcSpaceType.Tag`). The IFC has no correct outline for these spaces, so the tool
+Every `IfcSpace` (room, space or area) whose `Representation` is `$` is
+listed with its number, name, level, GUID and element ID (from
+`IfcSpaceType.Tag`, where the exporter writes it). The IFC has no correct outline for these spaces, so the tool
 does not change them. The "Why no geometry" reason is read from the space's
 `Qto_SpaceBaseQuantities` area and height:
 
-- **Has area, but Revit could not build the 3D shape:** the room is placed and
+- **Has area, but no 3D shape was exported:** the room is placed and
   enclosed, but its boundary could not be turned into a 3D shape, for example
   because of very short or overlapping boundary lines, slivers or gaps;
 - **Area is 0:** the room or area is not enclosed, or it is redundant;
-- **Has area but height is 0:** the upper limit is at or below the base;
+- **Has area but height is 0:** the top of the room is at or below its base;
 - **No area data in the IFC:** base quantities were not exported, so the cause
   cannot be read from the file.
 
 The Excel report is named `<file>_Areas_without_geometry.xlsx`, or
 `IFC-SG_Areas_without_geometry.xlsx` for several files. Download it from the
-results, or take it from the repaired ZIP. In Revit, find each row with
-**Manage > Select by ID** and the Revit Lookup ID.
+results, or take it from the repaired ZIP. Find each row in your authoring
+software by its element ID or GUID (in Revit: **Manage > Select by ID**).
 
 ### How the repair is verified
 
@@ -99,7 +108,7 @@ confirms that:
 - no remaining record references a removed record;
 - all selected automatic repairs were applied.
 
-Issues that need review in Revit are not changed, so they can remain in the
+Issues that need review in the source model are not changed, so they can remain in the
 repaired file. The completion screen shows how many supported issues remain.
 
 ## Browser and file limits
