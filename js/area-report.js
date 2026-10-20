@@ -1,4 +1,4 @@
-import {storedZip} from "./zip-exporter.js?v=2.5";
+import {storedZip} from "./zip-exporter.js?v=2.5.1";
 
 const XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 const encoder = new TextEncoder();

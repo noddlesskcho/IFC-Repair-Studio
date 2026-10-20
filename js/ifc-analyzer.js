@@ -1,6 +1,6 @@
-import {refs, stepString} from "./ifc-loader.js?v=2.5";
-import {analyzeEmptyShells} from "./ifc-empty-shells.js?v=2.5";
-import {analyzeSpaces} from "./ifc-spaces.js?v=2.5";
+import {refs, stepString} from "./ifc-loader.js?v=2.5.1";
+import {analyzeEmptyShells} from "./ifc-empty-shells.js?v=2.5.1";
+import {analyzeSpaces} from "./ifc-spaces.js?v=2.5.1";
 
 const SUPPORTED = new Set(["body|sweptsolid", "body|tessellation", "footprint|curve2d"]);
 const REFERENCE_LABELS = new Map([
