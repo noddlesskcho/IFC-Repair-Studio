@@ -89,6 +89,7 @@ function parseCapturedRecord(bytes, start, end, truncated = false) {
   // The first attribute token and its offsets; whitespace and /* */ comments around it are skipped.
   let firstStart = open + 1;
   while (true) {
+    // nosemgrep: nodejs_scan.javascript-dos-rule-regex_dos -- single-character test, not ReDoS
     while (/\s/.test(text[firstStart] || "")) firstStart += 1;
     if (!text.startsWith("/*", firstStart)) break;
     const commentEnd = text.indexOf("*/", firstStart + 2);
@@ -96,6 +97,7 @@ function parseCapturedRecord(bytes, start, end, truncated = false) {
     firstStart = commentEnd + 2;
   }
   let firstEnd = firstStart;
+  // nosemgrep: nodejs_scan.javascript-dos-rule-regex_dos -- single-character test, not ReDoS
   while (firstEnd < text.length && !/[\s,]/.test(text[firstEnd]) && !text.startsWith("/*", firstEnd)) firstEnd += 1;
   return {
     id: Number(prefix[1]), type: prefix[2].toUpperCase(), args, start, end, truncated,

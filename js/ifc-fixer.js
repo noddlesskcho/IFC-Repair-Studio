@@ -67,6 +67,7 @@ function argumentSpans(text) {
 // Narrows an argument span to its value, skipping whitespace and /* */ comments at either end.
 function trimSpan(text, [start, end]) {
   while (true) {
+    // nosemgrep: nodejs_scan.javascript-dos-rule-regex_dos -- single-character test, not ReDoS
     while (start < end && /\s/.test(text[start])) start += 1;
     if (!text.startsWith("/*", start)) break;
     const commentEnd = text.indexOf("*/", start + 2);
@@ -74,6 +75,7 @@ function trimSpan(text, [start, end]) {
     start = commentEnd + 2;
   }
   while (true) {
+    // nosemgrep: nodejs_scan.javascript-dos-rule-regex_dos -- single-character test, not ReDoS
     while (end > start && /\s/.test(text[end - 1])) end -= 1;
     if (end - start < 4 || text.slice(end - 2, end) !== "*/") break;
     const commentStart = text.lastIndexOf("/*", end - 3);
