@@ -8,21 +8,21 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>IFC+SG Repair Tool</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23175cd3'/%3E%3Cpath d='M18 20h28v7H25v7h17v7H25v11h-7z' fill='white'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="./css/app.css?v=2.5.1">
+  <link rel="stylesheet" href="./css/app.css?v=2.5.2">
 </head>
 <body>
   <header class="site-header">
     <div>
       <p class="eyebrow">IFC4 &middot; IFC+SG &middot; CORENET X PRE-SUBMISSION CHECK</p>
       <h1>IFC+SG Repair Tool</h1>
-      <p class="subtitle">Repairs CORENET X error <strong>IFC0000104</strong> and detects <strong>IFC0000101</strong> in IFC+SG files from any BIM authoring software.</p>
+      <p class="subtitle">Identifies and fixes two known geometry issues in exported IFC files. These issues can make a file invalid, cause schema validation to fail, or prevent the model from being processed and displayed correctly.</p>
       <details class="about-checks">
         <summary>What it checks</summary>
         <ul class="check-list">
-          <li><span class="check-tag repair">Repairs</span><span class="check-code">IFC0000104</span><span class="check-text"><strong>Missing geometry context</strong><code>IfcShapeRepresentation.ContextOfItems is required</code></span></li>
-          <li><span class="check-tag repair">Repairs</span><span class="check-code">IFC0000104</span><span class="check-text"><strong>Empty 3D shapes</strong><code>IfcClosedShell.CfsFaces must not be empty</code></span></li>
+          <li><span class="check-tag repair">Repairs</span><span class="check-code">IFC0000104</span><span class="check-text"><strong>Missing geometry context</strong><code>IfcShapeRepresentation.ContextOfItems</code> Adds the missing geometry context reference.</span></li>
+          <li><span class="check-tag repair">Repairs</span><span class="check-code">IFC0000104</span><span class="check-text"><strong>Invalid 3D geometry</strong><code>IfcClosedShell</code> Removes empty geometry that can cause processing or rendering to fail.</span></li>
+          <li><span class="check-tag report">Reference</span><span class="check-code">IfcSpace</span><span class="check-text"><strong>Spaces without geometry</strong>Lists them in an Excel report with possible causes and element IDs, for further investigation where needed.</span></li>
           <li><span class="check-tag blocked">Detects</span><span class="check-code">IFC0000101</span><span class="check-text"><strong>File is not IFC4</strong>Cannot be repaired. Check your IFC export settings and export again as IFC4.</span></li>
-          <li><span class="check-tag report">Reports</span><span class="check-code">IfcSpace</span><span class="check-text"><strong>Areas without geometry</strong>Excel report with element IDs, to fix in the source model.</span></li>
         </ul>
       </details>
     </div>
@@ -74,7 +74,7 @@
         </article>
         <article class="metric"><strong id="repairable-count">0</strong><span>Ready to repair</span></article>
         <article class="metric amber"><strong id="review-count">0</strong><span>Unable to repair automatically</span></article>
-        <article id="space-metric" class="metric amber hidden"><strong id="space-count">0</strong><span>Areas without geometry: fix in the source model (report only)</span></article>
+        <article id="space-metric" class="metric amber hidden"><strong id="space-count">0</strong><span>Areas without geometry (for reference)</span></article>
         <article id="schema-metric" class="metric"><strong id="schema-value">-</strong><span>IFC schema</span><p id="schema-note" class="schema-note hidden"></p></article>
       </div>
 
@@ -152,7 +152,7 @@
             <div class="panel-explain space">
               <p><b>What is wrong</b>These <code>IfcSpace</code> objects (rooms, spaces and areas) were exported with no shape at all (<code>Representation = $</code>).</p>
               <p><b>Why they have no geometry</b>The <strong>Why no geometry</strong> column reads the area and height exported for each space (<code>Qto_SpaceBaseQuantities</code>). <em>Has area, but no 3D shape was exported</em> means the room is placed and enclosed, but its boundary could not be turned into a 3D shape, usually because of very short or overlapping boundary lines, thin slivers or narrow gaps. <em>Area is 0</em> means it is not enclosed or is redundant.</p>
-              <p><b>Why the tool does not change them</b>The IFC file has no correct outline for these spaces, so there is no shape to add. They stay unchanged in the repaired IFC. This is a report only.</p>
+              <p><b>Why the tool does not change them</b>The IFC file has no correct outline for these spaces, so there is no shape to add. They stay unchanged in the repaired IFC. This list is for reference only.</p>
               <p><b>What you should do</b>Download the areas report. For each row, find the room or area in your authoring software by its element ID or GUID (in Revit: <strong>Manage &rsaquo; Select by ID</strong>), and fix it as the report says. Then export the IFC again.</p>
             </div>
             <div class="table-wrap">
@@ -187,7 +187,7 @@
       <ul>
         <li>Only the planned edits were made: missing <code>IfcShapeRepresentation.ContextOfItems</code> values were filled, and empty <code>IfcClosedShell</code> geometry was removed together with the references to it.</li>
         <li>No element was deleted. An element whose only geometry was empty keeps its data with <code>Representation = $</code>.</li>
-        <li>The original IFC remains unchanged.</li>
+        <li>The original IFC remains unchanged. Check the repaired files before submission (see the disclaimer at the bottom of the page).</li>
         <li id="completion-report-note" class="hidden">The ZIP also contains the Areas without geometry report (Excel). It lists each area with no shape, why it has none, and how to fix it in the source model.</li>
         <li>No file was uploaded or transmitted by this application.</li>
       </ul>
@@ -212,10 +212,11 @@
   </main>
 
   <footer>
-    <p>This tool is not a complete IFC validator or CORENET X compliance checker.</p>
-    <p class="version">Version 2.5.1 &middot; 20 Oct 2026</p>
+    <!-- Disclaimer wording pending legal clearance; replace with the cleared text when available. -->
+    <p class="disclaimer"><strong>Disclaimer:</strong> This tool fixes specific known IFC issues only. It does not guarantee that repaired files are free from other errors. Users should keep their original files and check that repaired files are accurate, complete and intact before submission. Use of this tool is at the user's own risk, and users remain responsible for meeting CORENET X submission requirements.</p>
+    <p class="version">Version 2.5.2 &middot; 22 Oct 2026</p>
   </footer>
-  <script type="module" src="./js/app.js?v=2.5.1"></script>
+  <script type="module" src="./js/app.js?v=2.5.2"></script>
 </body>
 </html>
 

@@ -1,4 +1,4 @@
-import {paginateIssues, RESULTS_PAGE_SIZE} from "./ifc-batch.js?v=2.5.1";
+import {paginateIssues, RESULTS_PAGE_SIZE} from "./ifc-batch.js?v=2.5.2";
 
 const byId = id => document.getElementById(id);
 
@@ -253,7 +253,7 @@ function renderBreakdown(analysis) {
     ["Empty IfcClosedShell", counts.emptyClosedShell || 0, "shell"],
     ["Body context missing", (counts.bodySweptSolid || 0) + (counts.bodyTessellation || 0), ""],
     ["FootPrint context missing", counts.footprintCurve2D || 0, ""],
-    ["Area without geometry (report only)", analysis.spaceIssues.length, "shell"],
+    ["Area without geometry (for reference)", analysis.spaceIssues.length, "shell"],
   ];
   elements.breakdown.replaceChildren(...rows.map(([label, count, className]) => {
     const item = document.createElement("li");
@@ -295,7 +295,7 @@ function renderPanels(analysis, changedAnalysis) {
     count => `${count.toLocaleString()} will get the missing link (nothing deleted)`);
   const spaceCount = analysis.spaceIssues.length;
   const areas = count => `${count.toLocaleString()} area${count === 1 ? "" : "s"}`;
-  elements.spaceSummary.textContent = `${spaceCount.toLocaleString()} of ${analysis.spacesScanned.toLocaleString()} IfcSpace${analysis.spacesScanned === 1 ? "" : "s"} ${spaceCount === 1 ? "has" : "have"} no shape. Report only: fix them in the source model.`;
+  elements.spaceSummary.textContent = `${spaceCount.toLocaleString()} of ${analysis.spacesScanned.toLocaleString()} IfcSpace${analysis.spacesScanned === 1 ? "" : "s"} ${spaceCount === 1 ? "has" : "have"} no shape. For reference: investigate them in the source model where necessary.`;
   elements.reportBar.classList.toggle("hidden", !spaceCount);
   elements.reportSummary.textContent = `${areas(spaceCount)} without geometry, with the reason, the element ID and how to fix each one. The repaired ZIP also includes this report.`;
   elements.fileErrors.classList.toggle("hidden", !analysis.fileErrors.length);

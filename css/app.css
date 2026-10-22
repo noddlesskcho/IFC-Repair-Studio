@@ -95,3 +95,4 @@ footer .version{margin-top:10px;font-weight:700;font-variant-numeric:tabular-num
 .working-banner{position:sticky;top:0;z-index:20;display:flex;flex-wrap:wrap;gap:4px 12px;align-items:baseline;justify-content:center;padding:10px 24px;background:var(--amberbg);border-bottom:1px solid #fedf89;color:#7a2e0e;font-size:14px;line-height:1.5;text-align:center}
 .working-banner strong{color:var(--amber)}
 .privacy-badge .keep-open{color:var(--amber);font-weight:700}
+footer .disclaimer{max-width:900px;margin:0 auto 10px;line-height:1.5}

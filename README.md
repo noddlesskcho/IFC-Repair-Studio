@@ -38,7 +38,7 @@ Your original files are never changed.
 |---|---|
 | Missing geometry context (`IfcShapeRepresentation.ContextOfItems = $`), error IFC0000104 | Repairs it. It adds the link to the model's only matching context. Nothing is deleted. |
 | Empty 3D shapes (`IfcClosedShell` with no faces), error IFC0000104 | Repairs it. It deletes only the empty shape; the element keeps its name, element ID, properties and level. Check these elements in the source model first. |
-| Areas without geometry (`IfcSpace.Representation = $`) | Report only. Lists each room or area with its element ID, the reason it has no shape, and how to fix it in the source model. |
+| Areas without geometry (`IfcSpace.Representation = $`) | For reference only. Lists each room or area with its element ID, the reason it has no shape, and how to fix it in the source model. |
 | File is not IFC4 (for example IFC2X3), error IFC0000101 | Report only. The file is blocked and the IFC schema box turns red. It cannot be repaired: check the IFC export settings, export the model again as IFC4 with the IFC+SG settings, then check the new file. |
 
 This tool is not a complete IFC validator or CORENET X compliance checker. A
@@ -77,7 +77,7 @@ reported and not changed. A representation that also misses its `ContextOfItems`
 gets its context repaired first; check the repaired file again to remove its empty
 geometry.
 
-### Areas without geometry (report only)
+### Areas without geometry (for reference)
 
 Every `IfcSpace` (room, space or area) whose `Representation` is `$` is
 listed with its number, name, level, GUID and element ID (from
