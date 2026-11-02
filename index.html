@@ -8,21 +8,22 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>IFC+SG Repair Tool</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23175cd3'/%3E%3Cpath d='M18 20h28v7H25v7h17v7H25v11h-7z' fill='white'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="./css/app.css?v=2.6.0">
+  <link rel="stylesheet" href="./css/app.css?v=2.6.1">
 </head>
 <body>
   <header class="site-header">
     <div>
-      <p class="eyebrow">IFC4 &middot; IFC+SG &middot; CORENET X PRE-SUBMISSION CHECK</p>
+      <p class="eyebrow">IFC4 SCHEMA CHECK &middot; PRE-SUBMISSION CHECK</p>
       <h1>IFC+SG Repair Tool</h1>
       <p class="subtitle">Identifies and fixes two known geometry issues in exported IFC files. These issues can make a file invalid, cause schema validation to fail, or prevent the model from being processed and displayed correctly.</p>
       <details class="about-checks">
         <summary>What it checks</summary>
+        <p class="check-caption">Error codes as reported by the IFC Schema Check in the CORENET X Submission Portal.</p>
         <ul class="check-list">
-          <li><span class="check-tag repair">Repairs</span><span class="check-code">IFC0000104</span><span class="check-text"><strong>Missing geometry context</strong><code>IfcShapeRepresentation.ContextOfItems</code> Adds the missing geometry context reference.</span></li>
-          <li><span class="check-tag repair">Repairs</span><span class="check-code">IFC0000104</span><span class="check-text"><strong>Invalid 3D geometry</strong><code>IfcClosedShell</code> Removes empty geometry that can cause processing or rendering to fail.</span></li>
-          <li><span class="check-tag report">Reference</span><span class="check-code">IfcSpace</span><span class="check-text"><strong>Spaces without geometry</strong>Lists them in an Excel report with possible causes and element IDs, for further investigation where needed.</span></li>
-          <li><span class="check-tag blocked">Detects</span><span class="check-code">IFC0000101</span><span class="check-text"><strong>File is not IFC4</strong>Cannot be repaired. Check your IFC export settings and export again as IFC4.</span></li>
+          <li><span class="check-tag repair">Repairs</span><span class="check-code" title="IFC Schema Check error code (CORENET X Submission Portal)">IFC0000104</span><span class="check-text"><strong>Missing geometry context</strong><code>IfcShapeRepresentation.ContextOfItems</code> Adds the missing geometry context reference.</span></li>
+          <li><span class="check-tag repair">Repairs</span><span class="check-code" title="IFC Schema Check error code (CORENET X Submission Portal)">IFC0000104</span><span class="check-text"><strong>Invalid 3D geometry</strong><code>IfcClosedShell</code> Removes empty geometry that can cause processing or rendering to fail.</span></li>
+          <li><span class="check-tag report">Reference</span><span class="check-code no-code" aria-label="No portal error code">&mdash;</span><span class="check-text"><strong>Spaces without geometry</strong><code>IfcSpace</code> Lists them in an Excel report with possible causes and element IDs, for further investigation where needed.</span></li>
+          <li><span class="check-tag blocked">Detects</span><span class="check-code" title="IFC Schema Check error code (CORENET X Submission Portal)">IFC0000101</span><span class="check-text"><strong>File is not IFC4</strong>Cannot be repaired. Check your IFC export settings and export again as IFC4.</span></li>
         </ul>
       </details>
       <ul class="header-notes">
@@ -217,7 +218,7 @@
   </main>
 
   <footer>
-    <p class="version">Version 2.6.0 &middot; 2 Nov 2026</p>
+    <p class="version">Version 2.6.1 &middot; 2 Nov 2026</p>
   </footer>
   <dialog id="disclaimer-dialog" class="confirm-dialog" aria-labelledby="disclaimer-title">
     <h2 id="disclaimer-title">Before you repair</h2>
@@ -229,7 +230,7 @@
       <button id="disclaimer-confirm" class="button primary" type="button" disabled>Confirm and repair</button>
     </div>
   </dialog>
-  <script type="module" src="./js/app.js?v=2.6.0"></script>
+  <script type="module" src="./js/app.js?v=2.6.1"></script>
 </body>
 </html>
 

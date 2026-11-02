@@ -119,3 +119,7 @@ footer .disclaimer{max-width:900px;margin:0 auto 12px;font-size:14px;line-height
 .dialog-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}
 @media(max-width:480px){.dialog-actions{flex-direction:column-reverse}}
 .site-header>div{flex:1 1 auto;min-width:0}
+.check-caption{margin:10px 0 0;font-size:12px;color:var(--muted)}
+.check-caption+.check-list{margin-top:6px}
+.check-code[title]{cursor:help}
+.check-code.no-code{color:var(--muted);font-weight:400}
