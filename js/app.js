@@ -1,14 +1,14 @@
-import {analyzeIfc} from "./ifc-analyzer.js?v=2.5.3";
-import {combineAnalyses, selectedIssuesForFile} from "./ifc-batch.js?v=2.5.3";
-import {downloadBlob, repairedFileName} from "./ifc-exporter.js?v=2.5.3";
-import {applyRepairs, verifyNoDanglingReferences, verifyRepairedModel, verifyRepairs} from "./ifc-fixer.js?v=2.5.3";
-import {loadIfc} from "./ifc-loader.js?v=2.5.3";
-import {areaReportName, buildAreaReport} from "./area-report.js?v=2.5.3";
-import {createRepairedZip, repairedArchiveName} from "./zip-exporter.js?v=2.5.3";
+import {analyzeIfc} from "./ifc-analyzer.js?v=2.6.0";
+import {combineAnalyses, selectedIssuesForFile} from "./ifc-batch.js?v=2.6.0";
+import {downloadBlob, repairedFileName} from "./ifc-exporter.js?v=2.6.0";
+import {applyRepairs, verifyNoDanglingReferences, verifyRepairedModel, verifyRepairs} from "./ifc-fixer.js?v=2.6.0";
+import {loadIfc} from "./ifc-loader.js?v=2.6.0";
+import {areaReportName, buildAreaReport} from "./area-report.js?v=2.6.0";
+import {createRepairedZip, repairedArchiveName} from "./zip-exporter.js?v=2.6.0";
 import {
   elements, isWorking, renderResults, repairAllowed, resetUi, setStep, showCompletion, showError, showFiles,
   setWorking, updateProgress, updateRepairButton,
-} from "./ui.js?v=2.5.3";
+} from "./ui.js?v=2.6.0";
 
 const state = {entries: [], analysis: null, outputs: [], archive: null, busy: false};
 
@@ -170,7 +170,22 @@ for (const name of ["dragleave", "drop"]) {
   });
 }
 elements.drop.addEventListener("drop", event => processFiles(event.dataTransfer.files));
-elements.repair.addEventListener("click", repairSelected);
+// The user reads and accepts the disclaimer before every repair run.
+elements.repair.addEventListener("click", () => {
+  if (state.busy || !repairAllowed(state.analysis)) return;
+  elements.disclaimerAgree.checked = false;
+  elements.disclaimerConfirm.disabled = true;
+  elements.disclaimerDialog.showModal();
+});
+elements.disclaimerAgree.addEventListener("change", () => {
+  elements.disclaimerConfirm.disabled = !elements.disclaimerAgree.checked;
+});
+elements.disclaimerCancel.addEventListener("click", () => elements.disclaimerDialog.close());
+elements.disclaimerConfirm.addEventListener("click", () => {
+  if (!elements.disclaimerAgree.checked) return;
+  elements.disclaimerDialog.close();
+  repairSelected();
+});
 elements.reportButton.addEventListener("click", () => downloadReport().catch(showError));
 for (const button of [elements.checkAnother, elements.restart, elements.errorRestart]) {
   button.addEventListener("click", restart);

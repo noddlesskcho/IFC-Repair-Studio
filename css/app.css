@@ -96,3 +96,26 @@ footer .version{margin-top:10px;font-weight:700;font-variant-numeric:tabular-num
 .working-banner strong{color:var(--amber)}
 .privacy-badge .keep-open{color:var(--amber);font-weight:700}
 footer .disclaimer{max-width:900px;margin:0 auto 12px;font-size:14px;line-height:1.6;color:#475467}
+/* Header: disclaimer card on the right, two short notes under "What it checks". */
+.disclaimer-card{flex:0 0 auto;max-width:360px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;color:#475467;font-size:13px;line-height:1.5;box-shadow:0 1px 2px rgba(16,24,40,.03)}
+.disclaimer-card strong{display:block;color:var(--ink);margin-bottom:4px}
+.disclaimer-card p{margin:0}
+.header-notes{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:6px 24px;font-size:13px;line-height:1.5;color:var(--muted)}
+.header-notes li{position:relative;padding-left:16px}
+.header-notes li::before{content:"";position:absolute;left:0;top:.5em;width:8px;height:8px;border-radius:50%}
+.header-notes .note-local strong{color:var(--ink)}
+.header-notes .note-local::before{background:var(--green)}
+.header-notes .note-keep{color:var(--amber)}
+.header-notes .note-keep::before{background:var(--amber)}
+@media(max-width:800px){.disclaimer-card{max-width:none;margin-top:14px}}
+/* Disclaimer confirmation before repair. */
+.confirm-dialog{max-width:560px;width:calc(100% - 32px);border:1px solid var(--line);border-radius:14px;padding:22px;color:var(--ink);box-shadow:0 20px 40px rgba(16,24,40,.18)}
+.confirm-dialog::backdrop{background:rgba(16,24,40,.45)}
+.confirm-dialog h2{margin:0 0 6px;font-size:20px}
+.confirm-dialog .dialog-lead{margin:0 0 12px;color:var(--muted)}
+.confirm-dialog .dialog-disclaimer{margin:0 0 14px;padding:12px 14px;background:var(--amberbg);border:1px solid #fedf89;border-radius:10px;font-size:14px;line-height:1.6;color:#344054}
+.confirm-check{display:flex;gap:10px;align-items:flex-start;font-weight:700;font-size:14px;cursor:pointer}
+.confirm-check input{margin-top:3px;width:16px;height:16px}
+.dialog-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:18px}
+@media(max-width:480px){.dialog-actions{flex-direction:column-reverse}}
+.site-header>div{flex:1 1 auto;min-width:0}

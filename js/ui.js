@@ -1,4 +1,4 @@
-import {paginateIssues, RESULTS_PAGE_SIZE} from "./ifc-batch.js?v=2.5.3";
+import {paginateIssues, RESULTS_PAGE_SIZE} from "./ifc-batch.js?v=2.6.0";
 
 const byId = id => document.getElementById(id);
 
@@ -56,6 +56,10 @@ export const elements = {
   signatureSummary: byId("signature-summary"),
   repairFileSummary: byId("repair-file-summary"),
   repair: byId("repair-button"),
+  disclaimerDialog: byId("disclaimer-dialog"),
+  disclaimerAgree: byId("disclaimer-agree"),
+  disclaimerConfirm: byId("disclaimer-confirm"),
+  disclaimerCancel: byId("disclaimer-cancel"),
   checkAnother: byId("check-another"),
   completion: byId("completion-card"),
   completionSummary: byId("completion-summary"),
