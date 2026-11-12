@@ -8,7 +8,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>IFC+SG Repair Tool</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23175cd3'/%3E%3Cpath d='M18 20h28v7H25v7h17v7H25v11h-7z' fill='white'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="./css/app.css?v=2.6.1">
+  <link rel="stylesheet" href="./css/app.css?v=2.7.0">
 </head>
 <body>
   <header class="site-header">
@@ -16,6 +16,8 @@
       <p class="eyebrow">IFC4 SCHEMA CHECK &middot; PRE-SUBMISSION CHECK</p>
       <h1>IFC+SG Repair Tool</h1>
       <p class="subtitle">Identifies and fixes two known geometry issues in exported IFC files. These issues can make a file invalid, cause schema validation to fail, or prevent the model from being processed and displayed correctly.</p>
+    </div>
+    <div class="header-side">
       <details class="about-checks">
         <summary>What it checks</summary>
         <p class="check-caption">Error codes as reported by the IFC Schema Check in the CORENET X Submission Portal.</p>
@@ -26,13 +28,7 @@
           <li><span class="check-tag blocked">Detects</span><span class="check-code" title="IFC Schema Check error code (CORENET X Submission Portal)">IFC0000101</span><span class="check-text"><strong>File is not IFC4</strong>Cannot be repaired. Check your IFC export settings and export again as IFC4.</span></li>
         </ul>
       </details>
-      <ul class="header-notes">
-        <li class="note-local"><strong>Processed locally in this browser.</strong> Files are not uploaded or stored.</li>
-        <li class="note-keep"><strong>Keep this tab open and in front until it finishes.</strong></li>
-      </ul>
     </div>
-    <!-- Disclaimer wording pending legal clearance; replace with the cleared text when available (also in the confirmation dialog). -->
-    <aside class="disclaimer-card" aria-label="Disclaimer"><strong>Disclaimer</strong><p>The tool addresses specific known IFC issues and does not guarantee that corrected files are free from other errors. Users should retain their original files and verify the accuracy, integrity and completeness of corrected files before submission. Use is at the user's own risk, and users remain responsible for compliance with CORENET X submission requirements.</p></aside>
   </header>
 
   <div id="working-banner" class="working-banner hidden" role="status">
@@ -41,6 +37,15 @@
   </div>
 
   <main>
+    <!-- Disclaimer and User Acknowledgement wording supplied by BCA (Nov 2026). Text is verbatim from legal; do not edit or add to it. -->
+    <section class="disclaimer-panel" aria-labelledby="disclaimer-heading">
+      <h2 id="disclaimer-heading">Disclaimer</h2>
+      <div class="disclaimer-grid">
+        <div class="disclaimer-item"><p>The IFC+SG Repair Tool (the &ldquo;Tool&rdquo;) addresses only specific known IFC issues and usage of the Tool does not guarantee that corrected files are free from other errors. Users should retain their original files and verify the accuracy, integrity and completeness of corrected files before submission.</p></div>
+        <div class="disclaimer-item"><p>Use of the Tool is at the user's own risk. Users remain responsible to verify the files after using the Tool, and that any submissions via CORENET X comply with the Building Control Act 1989 (the &ldquo;BC Act&rdquo;) and regulations, and CORENET X submission requirements. The Tool is intended to complement industry workflows and does not replace the CORENET X submission requirements, validation checks or regulatory requirements.</p></div>
+        <div class="disclaimer-item"><p>The Tool does not replace Qualified Persons&rsquo; (the &ldquo;QPs&rdquo;) professional judgement and does not relieve the QPs of their duties and responsibilities under the BC Act and regulations. QPs remain responsible for verifying that the BIM files have been validated or rectified correctly, and for thoroughly reviewing their BIM models to ensure that their submissions comply with all applicable regulatory requirements before submission.</p></div>
+      </div>
+    </section>
     <section class="workflow" aria-label="Workflow">
       <span class="active" data-step="1">1 Select IFC files</span>
       <span data-step="2">2 Review results</span>
@@ -62,6 +67,10 @@
         <button id="change-file-button" class="button" type="button">Change files</button>
       </div>
     </section>
+    <ul class="header-notes">
+      <li class="note-local"><strong>Processed locally in this browser.</strong> Files are not uploaded or stored.</li>
+      <li class="note-keep"><strong>Keep this tab open and in front until it finishes.</strong></li>
+    </ul>
 
     <section class="card hidden" id="progress-card" aria-live="polite">
       <div class="progress-head"><strong id="progress-title">Reading IFC</strong><span id="progress-percent">0%</span></div>
@@ -193,7 +202,7 @@
       <ul>
         <li>Only the planned edits were made: missing <code>IfcShapeRepresentation.ContextOfItems</code> values were filled, and empty <code>IfcClosedShell</code> geometry was removed together with the references to it.</li>
         <li>No element was deleted. An element whose only geometry was empty keeps its data with <code>Representation = $</code>.</li>
-        <li>The original IFC remains unchanged. Check the repaired files before submission (see the disclaimer at the top of the page).</li>
+        <li>The original IFC remains unchanged. Check the repaired files before submission (see the disclaimer on the main page).</li>
         <li id="completion-report-note" class="hidden">The ZIP also contains the Areas without geometry report (Excel). It lists each area with no shape, why it has none, and how to fix it in the source model.</li>
         <li>No file was uploaded or transmitted by this application.</li>
       </ul>
@@ -218,19 +227,17 @@
   </main>
 
   <footer>
-    <p class="version">Version 2.6.1 &middot; 2 Nov 2026</p>
+    <p class="version">Version 2.7.0 &middot; 12 Nov 2026</p>
   </footer>
   <dialog id="disclaimer-dialog" class="confirm-dialog" aria-labelledby="disclaimer-title">
-    <h2 id="disclaimer-title">Before you repair</h2>
-    <p class="dialog-lead">Please read the disclaimer and confirm before the repair starts.</p>
-    <p class="dialog-disclaimer"><strong>Disclaimer:</strong> The tool addresses specific known IFC issues and does not guarantee that corrected files are free from other errors. Users should retain their original files and verify the accuracy, integrity and completeness of corrected files before submission. Use is at the user's own risk, and users remain responsible for compliance with CORENET X submission requirements.</p>
-    <label class="confirm-check"><input type="checkbox" id="disclaimer-agree"> I have read and accept the disclaimer.</label>
+    <h2 id="disclaimer-title">User Acknowledgement</h2>
+    <label class="confirm-check"><input type="checkbox" id="disclaimer-agree"> <span>By proceeding, I acknowledge that I have read and understood the disclaimer and agree to use the Tool at my own risk. I understand and acknowledge that the use of such Tool supplements but does not relieve the QP of their professional responsibilities under the BC Act and regulations.</span></label>
     <div class="dialog-actions">
       <button id="disclaimer-cancel" class="button" type="button">Cancel</button>
-      <button id="disclaimer-confirm" class="button primary" type="button" disabled>Confirm and repair</button>
+      <button id="disclaimer-confirm" class="button primary" type="button" disabled>Acknowledge and repair</button>
     </div>
   </dialog>
-  <script type="module" src="./js/app.js?v=2.6.1"></script>
+  <script type="module" src="./js/app.js?v=2.7.0"></script>
 </body>
 </html>
 
